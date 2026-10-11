@@ -38,6 +38,14 @@ export function TrainAccordionCard({
     (train.chartLabel && train.chartLabel.toLowerCase().includes('departed'))
   );
 
+  const isChartActuallyPrepared = Boolean(
+    isChartPrepared ||
+    train.chartTimings?.isFirstChartDone ||
+    train.chartStatus === 'CHART_PREPARED' ||
+    train.chartStatus === 'FINAL_CHART' ||
+    train.chartOneDate
+  );
+
   const rawBerths = availableBerths?.length > 0 ? availableBerths : allocatedBerths;
   const totalVacantCount = Number(
     train.totalVacantCount ?? (rawBerths?.length || 0)
@@ -143,9 +151,9 @@ export function TrainAccordionCard({
                   <span>0 Direct • {totalVacantCount} Segment Seats</span>
                 </span>
               )
-            ) : isChartPrepared ? (
+            ) : isChartActuallyPrepared ? (
               <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-300">
-                Chart Finalized • 0 Vacant
+                Chart Prepared • 0 Vacant
               </span>
             ) : (
               <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-300">

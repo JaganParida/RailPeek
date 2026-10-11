@@ -6,6 +6,7 @@ import { generateCoachBerths, getCoachClass } from '../mockData/coaches.mock.js'
 import { MOCK_BERTH_OCCUPANCIES } from '../mockData/availability.mock.js';
 import { evaluateCoachBerths, resolveJourneySegment } from '../engine/segmentEngine.js';
 import { evaluateChartStatus } from '../utils/chartStatus.js';
+import { getTrainRouteStops } from '../services/routeResolver.service.js';
 
 export class MockRailwayProvider extends RailwayProvider {
   constructor() {
@@ -188,8 +189,26 @@ export class MockRailwayProvider extends RailwayProvider {
     const fromCode = from.toUpperCase();
     const toCode = to.toUpperCase();
 
-    const train = MOCK_TRAINS.find((t) => t.number === trainNumber);
-    const route = MOCK_ROUTES[trainNumber];
+    let train = MOCK_TRAINS.find((t) => t.number === trainNumber);
+    let route = MOCK_ROUTES[trainNumber];
+
+    if (!route) {
+      try {
+        const dynamicStops = await getTrainRouteStops(trainNumber);
+        if (Array.isArray(dynamicStops) && dynamicStops.length > 1) {
+          route = dynamicStops;
+        }
+      } catch (_e) {
+        // ignore
+      }
+    }
+
+    if (!train && route) {
+      train = {
+        number: trainNumber,
+        classes: ['SL', '3A', '2A', '1A', '2S', 'CC'],
+      };
+    }
 
     if (!train || !route) {
       return {

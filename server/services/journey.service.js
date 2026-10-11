@@ -677,11 +677,20 @@ export async function findUsableBerths(params) {
       }
 
       const chartTimings = calculateChartTimings(date, train.departureTime, liveComp, departed, isBeforeRemote);
+      const isChartReallyPrepared = isPrepared || Boolean(chartTimings.isFirstChartDone);
+
+      if (isChartReallyPrepared && !departed) {
+        chartStatus = chartTimings.isSecondChartDone ? 'FINAL_CHART' : 'CHART_PREPARED';
+        chartLabel = chartTimings.isSecondChartDone ? 'Second Chart Finalized' : 'First Chart Prepared';
+        chartDescription = chartTimings.isSecondChartDone
+          ? 'Second Chart finalized. Vacant berths handed over to train TTE.'
+          : 'Official IRCTC Reservation Chart prepared. Real vacant berths verified.';
+      }
 
       // 3. UNPREPARED CHART BYPASS:
-      // If the chart is not prepared yet, there are zero vacant berths to query.
+      // If the chart is genuinely not prepared yet, there are zero vacant berths to query.
       // Skip class-wise IRCTC calls completely!
-      if (!isPrepared) {
+      if (!isChartReallyPrepared) {
         return classesToQuery.map((cls) => ({
           trainNumber: tNum,
           trainName: train.name || train.trainName,
@@ -698,9 +707,9 @@ export async function findUsableBerths(params) {
           berths: [],
           isChartPrepared: false,
           isDeparted: false,
-          chartStatus,
-          chartLabel,
-          chartDescription,
+          chartStatus: 'CHART_NOT_PREPARED',
+          chartLabel: 'Chart Opens 4h Before Departure',
+          chartDescription: `IRCTC chart not prepared yet for ${date}. First chart will be finalized 4 hours prior to departure.`,
           chartOneDate: null,
           chartTwoDate: null,
           chartTimings,
@@ -831,6 +840,27 @@ export async function findUsableBerths(params) {
           }
         }
 
+        // Robust Fallback: If live berths were empty or live IRCTC call failed,
+        // and fallback to demo is allowed, populate realistic berths from provider:
+        let isBerthsDemo = false;
+        if (liveBerths.length === 0 && process.env.LIVE_PROVIDER_FALLBACK_TO_DEMO !== 'false') {
+          try {
+            const fallbackAvail = await getCachedAvailability({
+              trainNumber: tNum,
+              date,
+              from: fromCode,
+              to: toCode,
+              travelClass: cls,
+            });
+            if (fallbackAvail && Array.isArray(fallbackAvail.berths) && fallbackAvail.berths.length > 0) {
+              liveBerths = fallbackAvail.berths;
+              isBerthsDemo = true;
+            }
+          } catch (_e) {
+            // fallback error ignored
+          }
+        }
+
         classResults.push({
           trainNumber: tNum,
           trainName: train.name || train.trainName,
@@ -845,7 +875,7 @@ export async function findUsableBerths(params) {
           travelClass: cls,
           coach: liveBerths[0]?.coach || (cls === 'SL' ? 'S1' : 'B1'),
           berths: liveBerths,
-          isChartPrepared: isPrepared,
+          isChartPrepared: isChartReallyPrepared,
           isDeparted: departed,
           chartStatus,
           chartLabel,
@@ -858,8 +888,8 @@ export async function findUsableBerths(params) {
           bookingChannelDesc: chartTimings.bookingChannelDesc,
           canBookOnline: chartTimings.canBookOnline,
           avlRemoteForBooking: liveComp?.avlRemoteForBooking || null,
-          source: 'live',
-          isDemo: false,
+          source: isBerthsDemo ? 'demo' : 'live',
+          isDemo: isBerthsDemo,
           fetchedAt: new Date().toISOString(),
         });
       }
