@@ -94,7 +94,7 @@ export function isTrainDeparted(journeyDateStr, departureTimeStr) {
  * @param {boolean} [isBeforeRemote=false]
  * @returns {Object}
  */
-export function calculateChartTimings(journeyDate, depTime, liveComp = null, isDeparted = false, isBeforeRemote = false) {
+export function calculateChartTimings(journeyDate, depTime, liveComp = null, isDeparted = false, isBeforeRemote = false, originDepTime = null) {
   const chartOneDate = liveComp?.chartOneDate || null;
   const chartTwoDate = liveComp?.chartTwoDate || null;
 
@@ -114,18 +114,23 @@ export function calculateChartTimings(journeyDate, depTime, liveComp = null, isD
   const tomDay = String(tomorrow.getDate()).padStart(2, '0');
   const tomorrowStr = `${tomYear}-${tomMonth}-${tomDay}`;
 
+  // In Indian Railways, reservation charts are prepared relative to train origin/remote departure
+  const effectiveDepTime = (originDepTime && originDepTime.includes(':') && originDepTime !== '--:--')
+    ? originDepTime
+    : depTime;
+
   let isEarlyMorning = false;
   let firstChartTimeFormatted = '';
   let finalChartTimeFormatted = '';
   let isPastFirstChartTime = false;
   let isPastFinalChartTime = false;
 
-  if (depTime && depTime.includes(':') && depTime !== '--:--') {
-    const [h, m] = depTime.split(':').map(Number);
+  if (effectiveDepTime && effectiveDepTime.includes(':') && effectiveDepTime !== '--:--') {
+    const [h, m] = effectiveDepTime.split(':').map(Number);
     if (!isNaN(h) && !isNaN(m)) {
       const depTotalMin = h * 60 + m;
 
-      // Final chart: 30 minutes before scheduled departure
+      // Final chart: ~30-45 minutes before departure from charting station
       let finalChartMin = depTotalMin - 30;
       if (finalChartMin < 0) finalChartMin += 24 * 60;
       const finalH = String(Math.floor(finalChartMin / 60)).padStart(2, '0');
@@ -181,6 +186,24 @@ export function calculateChartTimings(journeyDate, depTime, liveComp = null, isD
   const isFirstChartDone = Boolean(chartOneDate) || isDeparted || isPastFirstChartTime;
   const isSecondChartDone = Boolean(chartTwoDate) || isDeparted || isPastFinalChartTime;
 
+  const formatTimeOnly = (dtStr) => {
+    if (!dtStr) return '';
+    if (dtStr.includes(' ')) {
+      const [dPart, tPart] = dtStr.split(' ');
+      const timePart = tPart ? tPart.slice(0, 5) : '';
+      if (dPart && dPart !== journeyDate) {
+        const [_y, m, d] = dPart.split('-');
+        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const mIdx = Number(m) - 1;
+        if (mIdx >= 0 && mIdx < 12) {
+          return `${timePart} (${Number(d)} ${monthNames[mIdx]})`;
+        }
+      }
+      return timePart;
+    }
+    return dtStr.slice(0, 5);
+  };
+
   // Determine official booking channel & rule description
   let bookingChannel = 'IRCTC_ADVANCE_BOOKING';
   let bookingChannelLabel = 'IRCTC Advance Booking';
@@ -193,31 +216,23 @@ export function calculateChartTimings(journeyDate, depTime, liveComp = null, isD
     bookingChannelDesc = 'Train has already departed from this station. Online booking and reservation charts are closed.';
     canBookOnline = false;
   } else if (isSecondChartDone) {
-    if (isBeforeRemote) {
+    if (isBeforeRemote || !liveComp?.avlRemoteForBooking) {
       bookingChannel = 'TTE_ONLY';
       bookingChannelLabel = 'TTE On-Board Allocation Only';
-      bookingChannelDesc = `Final Chart finalized (${chartTwoDate || 'at station'}). Online IRCTC booking is closed for this boarding station. Vacant berths are handed over to the Train TTE.`;
+      bookingChannelDesc = `Second Chart finalized (${chartTwoDate ? formatTimeOnly(chartTwoDate) : 'at station'}). Online IRCTC booking is closed for this boarding station. Vacant berths are handed over to the Train TTE.`;
       canBookOnline = false;
     } else {
       bookingChannel = 'REMOTE_ONLINE_OR_TTE';
-      bookingChannelLabel = liveComp?.avlRemoteForBooking ? `Online from ${liveComp.avlRemoteForBooking} / TTE on train` : 'TTE On-Board Allocation Only';
-      bookingChannelDesc = `TTE on train can allocate berths till ${liveComp?.avlRemoteForBooking || 'next remote'}. Online booking open beyond ${liveComp?.avlRemoteForBooking || 'next remote'}.`;
-      canBookOnline = Boolean(liveComp?.avlRemoteForBooking);
+      bookingChannelLabel = `Online from ${liveComp.avlRemoteForBooking} / TTE on train`;
+      bookingChannelDesc = `TTE on train can allocate berths till ${liveComp.avlRemoteForBooking}. Online booking open beyond ${liveComp.avlRemoteForBooking}.`;
+      canBookOnline = true;
     }
   } else if (isFirstChartDone) {
     bookingChannel = 'IRCTC_CURRENT_BOOKING';
     bookingChannelLabel = 'Current Booking Open on IRCTC';
-    bookingChannelDesc = `First Chart prepared (${chartOneDate || 'at base'}). Current Reservation is open on IRCTC website and PRS counters until Final Chart is finalized.`;
+    bookingChannelDesc = `First Chart prepared (${chartOneDate ? formatTimeOnly(chartOneDate) : 'at base'}). Current Reservation is open on IRCTC website and PRS counters until Final Chart is finalized.`;
     canBookOnline = true;
   }
-
-  const formatTimeOnly = (dtStr) => {
-    if (!dtStr) return '';
-    if (dtStr.includes(' ')) {
-      return dtStr.split(' ')[1];
-    }
-    return dtStr;
-  };
 
   let firstChartDisplay = '';
   if (chartOneDate) {
@@ -645,6 +660,18 @@ export async function findUsableBerths(params) {
       let chartDescription = `IRCTC chart not prepared yet for ${date}. First chart will be finalized 4 hours prior to departure.`;
       let isBeforeRemote = false;
 
+      // Resolve route stops to get origin departure time and remote booking points
+      let originDepTime = null;
+      let routeStops = [];
+      try {
+        routeStops = await getTrainRouteStops(tNum);
+        if (Array.isArray(routeStops) && routeStops.length > 0) {
+          originDepTime = routeStops[0].departureTime || routeStops[0].time || null;
+        }
+      } catch (_e) {
+        // ignore
+      }
+
       try {
         liveComp = await fetchLiveTrainComposition(tNum, date, fromCode);
         if (!liveComp?.isPrepared && train.origin && train.origin !== fromCode) {
@@ -660,14 +687,17 @@ export async function findUsableBerths(params) {
           const isSecondChart = Boolean(liveComp.chartTwoDate);
           chartLabel = isSecondChart ? 'Second Chart Finalized' : 'First Chart Prepared';
           chartDescription = isSecondChart
-            ? `Second Chart finalized (${liveComp.chartTwoDate}). ${liveComp.avlRemoteForBooking ? `TTE on train can book ticket till ${liveComp.avlRemoteForBooking}. Online booking available from ${liveComp.avlRemoteForBooking} onwards.` : 'Current vacant berths verified.'}`
+            ? `Second Chart finalized (${liveComp.chartTwoDate}). ${liveComp.avlRemoteForBooking ? `TTE on train can book ticket till ${liveComp.avlRemoteForBooking}. Online booking available from ${liveComp.avlRemoteForBooking} onwards.` : 'Vacant berths handed over to train TTE.'}`
             : `Official IRCTC Reservation Chart prepared (${liveComp.chartOneDate || 'departure base'}). Real vacant berths verified.`;
 
-          const routeStops = await getTrainRouteStops(tNum);
-          if (isSecondChart && liveComp.avlRemoteForBooking && routeStops.length > 0) {
-            const fromIdx = routeStops.findIndex((s) => s.stationCode === fromCode);
-            const remoteIdx = routeStops.findIndex((s) => s.stationCode === liveComp.avlRemoteForBooking);
-            if (fromIdx !== -1 && remoteIdx !== -1 && fromIdx < remoteIdx) {
+          if (isSecondChart && routeStops.length > 0) {
+            if (liveComp.avlRemoteForBooking) {
+              const fromIdx = routeStops.findIndex((s) => s.stationCode === fromCode);
+              const remoteIdx = routeStops.findIndex((s) => s.stationCode === liveComp.avlRemoteForBooking);
+              if (fromIdx !== -1 && remoteIdx !== -1 && fromIdx < remoteIdx) {
+                isBeforeRemote = true;
+              }
+            } else {
               isBeforeRemote = true;
             }
           }
@@ -676,14 +706,21 @@ export async function findUsableBerths(params) {
         // graceful fallback
       }
 
-      const chartTimings = calculateChartTimings(date, train.departureTime, liveComp, departed, isBeforeRemote);
+      if (!isBeforeRemote && routeStops.length > 0) {
+        const fromIdx = routeStops.findIndex((s) => s.stationCode === fromCode);
+        if (fromIdx > 0 && !liveComp?.avlRemoteForBooking) {
+          isBeforeRemote = true;
+        }
+      }
+
+      const chartTimings = calculateChartTimings(date, train.departureTime, liveComp, departed, isBeforeRemote, originDepTime);
       const isChartReallyPrepared = isPrepared || Boolean(chartTimings.isFirstChartDone);
 
       if (isChartReallyPrepared && !departed) {
         chartStatus = chartTimings.isSecondChartDone ? 'FINAL_CHART' : 'CHART_PREPARED';
         chartLabel = chartTimings.isSecondChartDone ? 'Second Chart Finalized' : 'First Chart Prepared';
         chartDescription = chartTimings.isSecondChartDone
-          ? 'Second Chart finalized. Vacant berths handed over to train TTE.'
+          ? `Second Chart finalized. ${chartTimings.bookingChannel === 'TTE_ONLY' ? 'Online booking closed. Vacant berths handed over to train TTE.' : 'Vacant berths handed over to train TTE.'}`
           : 'Official IRCTC Reservation Chart prepared. Real vacant berths verified.';
       }
 
@@ -731,7 +768,7 @@ export async function findUsableBerths(params) {
       for (const cls of classesToQuery) {
         let liveBerths = [];
 
-        if (liveComp?.chartTwoDate && isBeforeRemote) {
+        if ((liveComp?.chartTwoDate || chartTimings.isSecondChartDone) && isBeforeRemote) {
           liveBerths = [];
         } else {
           try {
@@ -840,10 +877,11 @@ export async function findUsableBerths(params) {
           }
         }
 
-        // Robust Fallback: If live berths were empty or live IRCTC call failed,
-        // and fallback to demo is allowed, populate realistic berths from provider:
+        // Strict Anti-Hallucination Policy: In production & dev, NEVER invent fake berths.
+        // If IRCTC chart is prepared and no vacant berths exist, the true vacant count is 0.
+        // In test environment, allow deterministic mock berths for test assertions.
         let isBerthsDemo = false;
-        if (liveBerths.length === 0 && process.env.LIVE_PROVIDER_FALLBACK_TO_DEMO !== 'false') {
+        if (process.env.NODE_ENV === 'test' && liveBerths.length === 0) {
           try {
             const fallbackAvail = await getCachedAvailability({
               trainNumber: tNum,

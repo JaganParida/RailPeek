@@ -1,18 +1,20 @@
+// eslint-disable-next-line no-unused-vars
 import React, { useState, useMemo } from 'react';
 import {
   CheckCircle2,
   MapPin,
   ArrowRight,
-  ArrowDown,
   ChevronDown,
   ChevronUp,
   Route,
   LayoutGrid,
   AlertTriangle,
   RefreshCw,
-  Check,
+  Info,
 } from 'lucide-react';
 import { computeConnectedItinerary } from '@/lib/routeChainer';
+
+const SEATS_PAGE_SIZE = 8;
 
 // Desirability rank order:
 // 1. Side Lower (SL) -> 2. Side Upper (SU) -> 3. Lower (LB) -> 4. Upper (UB) -> 5. Middle (MB)
@@ -269,59 +271,78 @@ export function VacantBerthsGrid({
       .reduce((sum, it) => sum + (it.berths?.length || (it.seat ? 1 : 0)), 0);
   }, [connectedItinerary]);
 
-  // Station progression nodes along the arrow route track
-  const stationNodes = useMemo(() => {
+  // Group journey stages for the left-aligned vertical route timeline
+  const journeyStages = useMemo(() => {
     if (!connectedItinerary) return [];
-    if (connectedItinerary.isDirect) {
-      const directItem = (connectedItinerary.items || [])[0];
-      return [
-        { code: directItem?.from || fromStation, label: 'Boarding', isStart: true },
-        { code: directItem?.to || toStation, label: 'Destination', isEnd: true },
-      ];
-    }
-
-    const nodes = [];
     const items = connectedItinerary.items || [];
-    const pushNode = (node) => {
-      if (nodes.length === 0 || nodes[nodes.length - 1].code !== node.code) {
-        nodes.push(node);
-      }
-    };
+    const stages = [];
+    let currentStep = 1;
 
     for (let i = 0; i < items.length; i++) {
       const it = items[i];
       if (it.type === 'SEAT') {
-        if (nodes.length === 0) {
-          pushNode({ code: it.from, label: 'Boarding', isStart: true });
+        const prev = i > 0 ? items[i - 1] : null;
+        const isFirst = stages.length === 0;
+
+        let nodeType = 'START';
+        let nodeLabel = 'Boarding';
+        let hasSwitchNotice = false;
+
+        if (!isFirst) {
+          if (prev && prev.type === 'GAP') {
+            nodeType = 'GAP_RESUME';
+            nodeLabel = 'Seat Resumes';
+          } else {
+            nodeType = 'SWITCH';
+            nodeLabel = 'Switch';
+            hasSwitchNotice = true;
+          }
         }
-        const next = items[i + 1];
-        if (next && next.type === 'SWITCH') {
-          pushNode({ code: it.to, label: 'Switch', isSwitch: true });
-        } else if (next && next.type === 'GAP') {
-          pushNode({ code: it.to, label: 'No Seat', isGap: true });
-        } else if (!next) {
-          pushNode({ code: it.to, label: 'Destination', isEnd: true });
-        } else {
-          pushNode({ code: it.to, label: 'Station' });
-        }
-      } else if (it.type === 'SWITCH') {
-        pushNode({ code: it.station, label: 'Switch', isSwitch: true });
+
+        stages.push({
+          id: `seat-${i}-${it.from}-${it.to}`,
+          type: 'SEAT',
+          stepNumber: currentStep++,
+          stationCode: it.from,
+          stationLabel: nodeLabel,
+          nodeType,
+          hasSwitchNotice,
+          isGapTrack: false,
+          item: it,
+        });
       } else if (it.type === 'GAP') {
-        pushNode({ code: it.to, label: 'Seat Resumes', isGap: true });
+        stages.push({
+          id: `gap-${i}-${it.from}-${it.to}`,
+          type: 'GAP',
+          stationCode: it.from,
+          stationLabel: 'No Seat',
+          nodeType: 'GAP_START',
+          isGapTrack: true,
+          item: it,
+        });
       }
     }
 
-    if (nodes.length > 0) {
-      nodes[0].isStart = true;
-      nodes[0].label = 'Boarding';
-      nodes[nodes.length - 1].isEnd = true;
-      nodes[nodes.length - 1].label = 'Destination';
-    }
-    return nodes;
-  }, [connectedItinerary, fromStation, toStation]);
+    const lastItem = items[items.length - 1];
+    const destCode = lastItem ? (lastItem.to || toStation) : toStation;
+    stages.push({
+      id: `dest-final-${destCode}`,
+      type: 'DESTINATION',
+      stationCode: destCode,
+      stationLabel: 'Destination',
+      nodeType: 'END',
+      isGapTrack: false,
+      item: null,
+    });
+
+    return stages;
+  }, [connectedItinerary, toStation]);
 
   // Track user-selected seat per segment card (Interactive seat selection)
   const [selectedSeats, setSelectedSeats] = useState({});
+
+  // Track pagination page per segment card (Defaults to 8 seats per page)
+  const [seatPages, setSeatPages] = useState({});
 
   const handleSelectSeat = (segKey, seat) => {
     setSelectedSeats((prev) => {
@@ -449,191 +470,232 @@ export function VacantBerthsGrid({
             </div>
           </div>
 
-          {/* Clean Station Route Track Ribbon */}
-          {stationNodes.length > 1 && (
-            <div className="px-4 py-3.5 border-b border-slate-100 bg-white">
-              <div className="flex items-center justify-between gap-1 overflow-x-auto pb-0.5 scrollbar-none">
-                {stationNodes.map((node, nIdx) => (
-                  <React.Fragment key={`node-${nIdx}-${node.code}`}>
-                    <div className="flex flex-col items-center shrink-0 text-center min-w-[50px]">
+          {/* Vertical Journey Route Timeline with Left Station Locator Nodes */}
+          <div className="p-4 sm:p-5 bg-white">
+            <div className="space-y-0">
+              {journeyStages.map((stage, idx) => {
+                const segKey = stage.item ? `seat-${idx}-${stage.item.from}-${stage.item.to}` : '';
+                const seatList = stage.item
+                  ? (stage.item.berths && stage.item.berths.length > 0)
+                    ? stage.item.berths
+                    : (stage.item.seat ? [stage.item.seat] : [])
+                  : [];
+                const chosenSeat = selectedSeats[segKey] || seatList[0];
+                const currentPage = seatPages[segKey] || 1;
+                const totalPages = Math.ceil(seatList.length / SEATS_PAGE_SIZE) || 1;
+                const safeCurrentPage = Math.min(Math.max(1, currentPage), totalPages);
+
+                return (
+                  <div key={stage.id} className="flex items-stretch gap-3 sm:gap-4 group">
+                    {/* Left Vertical Route Locator Column */}
+                    <div className="w-12 sm:w-16 shrink-0 flex flex-col items-center">
+                      {/* Station Node Circle matching the exact ribbon styling */}
                       <div
-                        className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border transition-all ${
-                          node.isStart
+                        className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border shrink-0 transition-all ${
+                          stage.nodeType === 'START'
                             ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
-                            : node.isEnd
+                            : stage.nodeType === 'END'
                             ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-                            : node.isGap
-                            ? 'bg-amber-100 text-amber-800 border-amber-300'
-                            : 'bg-white text-slate-700 border-slate-300'
+                            : stage.nodeType === 'GAP_START' || stage.nodeType === 'GAP_RESUME'
+                            ? 'bg-amber-100 text-amber-800 border-amber-300 shadow-2xs'
+                            : 'bg-white text-slate-700 border-slate-300 shadow-2xs'
                         }`}
                       >
-                        {node.isStart ? (
+                        {stage.nodeType === 'START' ? (
                           <MapPin className="w-3 h-3 text-white" />
-                        ) : node.isEnd ? (
+                        ) : stage.nodeType === 'END' ? (
                           <CheckCircle2 className="w-3 h-3 text-white" />
-                        ) : node.isGap ? (
+                        ) : stage.nodeType === 'GAP_START' || stage.nodeType === 'GAP_RESUME' ? (
                           <AlertTriangle className="w-3 h-3 text-amber-700" />
                         ) : (
                           <RefreshCw className="w-3 h-3 text-slate-600" />
                         )}
                       </div>
-                      <span className="text-[11px] font-mono font-bold text-slate-900 mt-1 leading-none">
-                        {node.code}
-                      </span>
-                      <span className="text-[9px] text-slate-400 font-semibold mt-0.5 leading-none capitalize">
-                        {node.label}
-                      </span>
-                    </div>
 
-                    {nIdx < stationNodes.length - 1 && (
-                      <div className="flex-1 flex items-center justify-center min-w-[28px] px-1 relative -mt-3.5">
+                      {/* Station Code */}
+                      <span className="text-[11px] font-mono font-bold text-slate-900 mt-1 leading-none text-center">
+                        {stage.stationCode}
+                      </span>
+
+                      {/* Station Sub-label */}
+                      <span className="text-[9px] font-semibold text-slate-500 mt-0.5 leading-tight text-center capitalize">
+                        {stage.stationLabel}
+                      </span>
+
+                      {/* Continuous connecting track line down to next node */}
+                      {idx < journeyStages.length - 1 && (
                         <div
-                          className={`h-0.5 w-full ${
-                            node.isGap
-                              ? 'border-t border-dashed border-amber-400'
-                              : 'bg-slate-300'
+                          className={`w-0.5 flex-1 my-1.5 min-h-[36px] ${
+                            stage.isGapTrack
+                              ? 'border-l-2 border-dashed border-amber-400'
+                              : 'bg-slate-200'
                           }`}
                         />
-                        <div className="absolute flex items-center justify-center">
-                          <div className="w-3.5 h-3.5 rounded-full bg-white border border-slate-300 text-slate-400 flex items-center justify-center shadow-2xs">
-                            <ArrowRight className="w-2 h-2" />
+                      )}
+                    </div>
+
+                    {/* Right Content Column */}
+                    <div className="flex-1 min-w-0 pb-5">
+                      {stage.type === 'SEAT' && (
+                        <div className="space-y-2.5">
+                          {/* Switch Notice if seat changes on same train */}
+                          {stage.hasSwitchNotice && (
+                            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-blue-50 border border-blue-200 text-blue-900 text-xs font-semibold">
+                              <RefreshCw className="w-3 h-3 text-blue-600 shrink-0" />
+                              <span>Switch seat at <strong>{stage.stationCode}</strong> · Same train</span>
+                            </div>
+                          )}
+
+                          {/* Section Header: Route, Distance & Available Seats */}
+                          <div className="flex items-center justify-between gap-2 flex-wrap">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <div className="flex items-center gap-1.5 text-xs sm:text-sm font-bold text-slate-900 font-mono">
+                                <span>{stage.item.from}</span>
+                                <ArrowRight className="w-3.5 h-3.5 text-slate-300 shrink-0" />
+                                <span>{stage.item.to}</span>
+                              </div>
+                              {stage.item.distanceKm > 0 && (
+                                <span className="text-[11px] text-slate-400 font-medium">
+                                  ({stage.item.distanceKm} km)
+                                </span>
+                              )}
+                            </div>
+
+                            <span className="text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200 shrink-0">
+                              {`${seatList.length} ${seatList.length === 1 ? 'seat' : 'seats'}`}
+                            </span>
+                          </div>
+
+                          {/* Contained Seat Chips with 8-item pagination & in-box scroll */}
+                          <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-2.5 sm:p-3 space-y-2">
+                            <div className="max-h-[160px] overflow-y-auto scrollbar-thin pr-0.5">
+                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 sm:gap-2">
+                                {seatList.map((b, bIdx) => {
+                                  const pageOfThisSeat = Math.floor(bIdx / SEATS_PAGE_SIZE) + 1;
+                                  const isVisibleOnCurrentPage = pageOfThisSeat === safeCurrentPage;
+                                  const meta = resolveBerthMeta(b);
+                                  const isSelected = chosenSeat?.coach === b.coach && chosenSeat?.berthNumber === b.berthNumber;
+
+                                  return (
+                                    <button
+                                      type="button"
+                                      key={`${b.coach}-${b.berthNumber}-${bIdx}`}
+                                      onClick={() => handleSelectSeat(segKey, b)}
+                                      title={`Seat ${b.coach}-${b.berthNumber} (${meta.label})`}
+                                      style={{ display: isVisibleOnCurrentPage ? undefined : 'none' }}
+                                      className={`px-2.5 py-1.5 rounded-lg text-xs font-mono font-bold flex items-center justify-between border transition-all cursor-pointer ${
+                                        isSelected
+                                          ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
+                                          : 'bg-white text-slate-800 border-slate-200 hover:border-slate-400 hover:bg-slate-50'
+                                      }`}
+                                    >
+                                      <span>{`${b.coach}-${b.berthNumber}`}</span>
+                                      <span
+                                        className={`text-[9px] font-sans font-bold px-1.5 py-0.2 rounded border ${
+                                          isSelected
+                                            ? 'bg-slate-800 text-slate-200 border-slate-700'
+                                            : meta.badgeClass
+                                        }`}
+                                      >
+                                        {meta.short}
+                                      </span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+
+                            {/* In-Container Pagination Controls if > 8 seats */}
+                            {seatList.length > SEATS_PAGE_SIZE && (
+                              <div className="flex items-center justify-between pt-2 border-t border-slate-200 text-xs">
+                                <span className="text-[11px] text-slate-500 font-medium">
+                                  Showing <strong className="text-slate-800">{(safeCurrentPage - 1) * SEATS_PAGE_SIZE + 1}–{Math.min(safeCurrentPage * SEATS_PAGE_SIZE, seatList.length)}</strong> of <strong className="text-slate-800">{seatList.length}</strong> seats
+                                </span>
+                                <div className="flex items-center gap-1.5">
+                                  <button
+                                    type="button"
+                                    disabled={safeCurrentPage === 1}
+                                    onClick={() => setSeatPages((prev) => ({ ...prev, [segKey]: safeCurrentPage - 1 }))}
+                                    className="px-2 py-0.5 rounded text-[11px] font-bold border border-slate-300 bg-white text-slate-700 hover:text-slate-950 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                                  >
+                                    Prev
+                                  </button>
+                                  <span className="text-[11px] font-mono text-slate-600 px-1 font-semibold">
+                                    {safeCurrentPage} / {totalPages}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    disabled={safeCurrentPage >= totalPages}
+                                    onClick={() => setSeatPages((prev) => ({ ...prev, [segKey]: safeCurrentPage + 1 }))}
+                                    className="px-2 py-0.5 rounded text-[11px] font-bold border border-slate-300 bg-white text-slate-700 hover:text-slate-950 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                                  >
+                                    Next
+                                  </button>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         </div>
-                      </div>
-                    )}
-                  </React.Fragment>
-                ))}
-              </div>
-            </div>
-          )}
+                      )}
 
-          {/* Connected Journey Sections Flow */}
-          <div className="divide-y divide-slate-100">
-            {(connectedItinerary.items || []).map((item, idx) => {
-              if (item.type === 'SEAT') {
-                const seatList = (item.berths && item.berths.length > 0)
-                  ? item.berths
-                  : (item.seat ? [item.seat] : []);
-                const segKey = `seat-${idx}-${item.from}-${item.to}`;
-                const chosenSeat = selectedSeats[segKey] || seatList[0];
-
-                return (
-                  <div key={segKey} className="p-3.5 sm:p-4 hover:bg-slate-50/40 transition-colors space-y-2">
-                    {/* Clean Section Header: Route, Distance & Available Seats */}
-                    <div className="flex items-center justify-between gap-2 flex-wrap">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <div className="w-5 h-5 rounded flex items-center justify-center text-[10px] font-bold bg-slate-900 text-white shrink-0">
-                          {item.stepNumber}
-                        </div>
-                        <div className="flex items-center gap-1.5 text-xs sm:text-sm font-bold text-slate-900 font-mono">
-                          <span>{item.from}</span>
-                          <ArrowRight className="w-3.5 h-3.5 text-slate-300 shrink-0" />
-                          <span>{item.to}</span>
-                        </div>
-                        {item.distanceKm > 0 && (
-                          <span className="text-[11px] text-slate-400 font-medium">
-                            ({item.distanceKm} km)
-                          </span>
-                        )}
-                      </div>
-
-                      <span className="text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200 shrink-0">
-                        {`${seatList.length} ${seatList.length === 1 ? 'seat' : 'seats'}`}
-                      </span>
-                    </div>
-
-                    {/* Direct Seat Chips (First seat is top-comfort, tap any to choose) */}
-                    <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-                      {seatList.map((b, bIdx) => {
-                        const meta = resolveBerthMeta(b);
-                        const isSelected = chosenSeat?.coach === b.coach && chosenSeat?.berthNumber === b.berthNumber;
-
-                        return (
-                          <button
-                            type="button"
-                            key={`${b.coach}-${b.berthNumber}-${bIdx}`}
-                            onClick={() => handleSelectSeat(segKey, b)}
-                            title={`Seat ${b.coach}-${b.berthNumber} (${meta.label})`}
-                            className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold flex items-center gap-1.5 border transition-all cursor-pointer ${
-                              isSelected
-                                ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
-                                : 'bg-white text-slate-800 border-slate-200 hover:border-slate-400 hover:bg-slate-50'
-                            }`}
-                          >
-                            <span>{`${b.coach}-${b.berthNumber}`}</span>
-                            <span
-                              className={`text-[9px] font-sans font-bold px-1.5 py-0.2 rounded border ${
-                                isSelected
-                                  ? 'bg-slate-800 text-slate-200 border-slate-700'
-                                  : meta.badgeClass
-                              }`}
-                            >
-                              {meta.short}
+                      {stage.type === 'GAP' && (
+                        <div className="space-y-2">
+                          {/* Gap Header */}
+                          <div className="flex items-center justify-between gap-2 flex-wrap">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs sm:text-sm font-bold text-slate-900 font-mono">
+                                No Reserved Seat: {stage.item.from} ➔ {stage.item.to}
+                              </span>
+                              {stage.item.distanceKm > 0 && (
+                                <span className="text-[11px] text-slate-500 font-medium">
+                                  ({stage.item.distanceKm} km)
+                                </span>
+                              )}
+                              <span className="sr-only">Transit Stretch</span>
+                            </div>
+                            <span className="text-[10px] font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-300">
+                              Unreserved Stretch
                             </span>
-                            {isSelected && <Check className="w-3 h-3 text-white shrink-0" />}
-                          </button>
-                        );
-                      })}
+                          </div>
+
+                          {/* Open Advice Section - Not trapped inside an artificial container */}
+                          <div className="text-xs text-slate-700 leading-relaxed flex items-start gap-2.5 py-1">
+                            <div className="w-5 h-5 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center shrink-0 mt-0.5">
+                              <Info className="w-3.5 h-3.5" />
+                            </div>
+                            <p className="font-medium text-slate-700 leading-relaxed flex-1">
+                              {stage.item.tip}
+                            </p>
+                          </div>
+
+                          {/* Reassurance Note */}
+                          <div className="text-[11px] text-emerald-700 font-semibold flex items-center gap-1.5 pt-0.5">
+                            <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
+                            <span>Reserved seat resumes from <strong className="text-slate-900">{stage.item.to}</strong></span>
+                          </div>
+                        </div>
+                      )}
+
+                      {stage.type === 'DESTINATION' && (
+                        <div className="pt-0.5">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs sm:text-sm font-bold text-slate-900 font-mono">
+                              {stage.stationCode}
+                            </span>
+                            <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                              Journey Complete
+                            </span>
+                          </div>
+                          <div className="text-[11px] text-slate-500 font-medium mt-0.5">
+                            Arrival at final destination station.
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
-              }
-
-              if (item.type === 'SWITCH') {
-                return (
-                  <div
-                    key={`switch-${idx}-${item.station}`}
-                    className="flex items-center justify-center py-2 px-4 bg-slate-50/70 border-y border-slate-100"
-                  >
-                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white border border-slate-300 text-slate-700 text-xs font-semibold shadow-2xs">
-                      <ArrowDown className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                      <span>Switch seat at <strong>{item.station}</strong></span>
-                      <span className="text-[10px] text-slate-400 font-normal">· Same train</span>
-                    </div>
-                  </div>
-                );
-              }
-
-              if (item.type === 'GAP') {
-                return (
-                  <div
-                    key={`gap-${idx}-${item.from}-${item.to}`}
-                    className="p-3.5 sm:p-4 bg-amber-50/70 border-y border-amber-200 space-y-2"
-                  >
-                    {/* Clean Header: Easy words, no confusing jargon */}
-                    <div className="flex items-center justify-between gap-2 flex-wrap">
-                      <div className="flex items-center gap-2">
-                        <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-                        <span className="text-xs sm:text-sm font-bold text-slate-900">
-                          No Reserved Seat: {item.from} ➔ {item.to}
-                        </span>
-                        {item.distanceKm > 0 && (
-                          <span className="text-[11px] text-amber-800 font-medium">
-                            ({item.distanceKm} km)
-                          </span>
-                        )}
-                        <span className="sr-only">Transit Stretch</span>
-                      </div>
-                      <span className="text-[10px] font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-300">
-                        Unreserved Gap
-                      </span>
-                    </div>
-
-                    {/* Direct Passenger Advice */}
-                    <div className="p-2.5 rounded-lg bg-white border border-amber-200 text-xs text-slate-700 leading-relaxed">
-                      <p>{item.tip}</p>
-                    </div>
-
-                    {/* Reassurance Footer */}
-                    <div className="text-[11px] text-slate-500 font-medium pt-0.5">
-                      Reserved seat starts again from <strong className="text-slate-800">{item.to}</strong>
-                    </div>
-                  </div>
-                );
-              }
-
-              return null;
-            })}
+              })}
+            </div>
           </div>
         </div>
       )}

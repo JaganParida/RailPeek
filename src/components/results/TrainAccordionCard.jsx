@@ -46,6 +46,11 @@ export function TrainAccordionCard({
     train.chartOneDate
   );
 
+  const isTTEOnly = Boolean(
+    train.bookingChannel === 'TTE_ONLY' ||
+    (train.chartTimings?.isSecondChartDone && !train.chartTimings?.canBookOnline && !isDeparted)
+  );
+
   const rawBerths = availableBerths?.length > 0 ? availableBerths : allocatedBerths;
   const totalVacantCount = Number(
     train.totalVacantCount ?? (rawBerths?.length || 0)
@@ -138,6 +143,11 @@ export function TrainAccordionCard({
               <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 border border-slate-300 inline-flex items-center gap-1">
                 <Clock className="w-3 h-3 text-slate-500" />
                 <span>Departed ({departureTime})</span>
+              </span>
+            ) : isTTEOnly ? (
+              <span className="text-xs font-bold px-2 py-0.5 rounded-md bg-amber-50 text-amber-900 border border-amber-300 inline-flex items-center gap-1">
+                <Clock className="w-3 h-3 text-amber-600" />
+                <span>Final Chart Done • TTE Only</span>
               </span>
             ) : hasVacancies ? (
               isFullJourney ? (
@@ -239,20 +249,26 @@ export function TrainAccordionCard({
             <span className={`inline-flex items-center gap-1 text-[11px] font-bold ${
               isDeparted || train.bookingChannel === 'DEPARTED'
                 ? 'text-slate-600'
-                : train.bookingChannel === 'TTE_ONLY'
+                : isTTEOnly || train.bookingChannel === 'TTE_ONLY'
                 ? 'text-amber-800'
+                : train.bookingChannel === 'IRCTC_ADVANCE_BOOKING'
+                ? 'text-blue-800'
                 : 'text-emerald-700'
             }`}>
               <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
                 isDeparted || train.bookingChannel === 'DEPARTED'
                   ? 'bg-slate-400'
-                  : train.bookingChannel === 'TTE_ONLY'
+                  : isTTEOnly || train.bookingChannel === 'TTE_ONLY'
                   ? 'bg-amber-500'
+                  : train.bookingChannel === 'IRCTC_ADVANCE_BOOKING'
+                  ? 'bg-blue-500'
                   : 'bg-emerald-500'
               }`} />
               <span>
                 {isDeparted || train.bookingChannel === 'DEPARTED'
                   ? 'Train Departed • Booking Closed'
+                  : isTTEOnly
+                  ? 'TTE On-Board Allocation Only'
                   : train.bookingChannelLabel || 'Current Booking Open on IRCTC'}
               </span>
             </span>
