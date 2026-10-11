@@ -134,6 +134,8 @@ export function calculateConfirmationProbability({
   bookingStatus = 'GNWL 45',
   travelClass = '3A',
   daysUntilJourney = 3,
+  livePredictionPercentage = null,
+  livePredictionLabel = null,
 }) {
   const normCurrent = (currentStatus || '').toUpperCase().trim();
   const normBooking = (bookingStatus || '').toUpperCase().trim();
@@ -216,8 +218,19 @@ export function calculateConfirmationProbability({
     rawProb += Math.round(clearanceVelocity * 14);
   }
 
-  // Clamped probability (5% to 94%)
-  const probability = Math.min(94, Math.max(5, Math.round(rawProb)));
+  // Parse upstream live percentage if provided
+  let hasLivePercentage = false;
+  let parsedLiveProb = null;
+  if (livePredictionPercentage !== null && livePredictionPercentage !== undefined) {
+    const cleanNum = parseInt(String(livePredictionPercentage).replace('%', '').trim(), 10);
+    if (!isNaN(cleanNum) && cleanNum >= 0 && cleanNum <= 100) {
+      parsedLiveProb = cleanNum;
+      hasLivePercentage = true;
+    }
+  }
+
+  // Use live prediction if available, else clamped statistical probability (5% to 94%)
+  const probability = hasLivePercentage ? parsedLiveProb : Math.min(94, Math.max(5, Math.round(rawProb)));
 
   // Determine tier
   let tier = 'LOW';
@@ -234,9 +247,29 @@ export function calculateConfirmationProbability({
     tierColor = 'amber';
   }
 
+  // Adopt upstream live prediction label if provided
+  if (livePredictionLabel) {
+    const cleanLabel = String(livePredictionLabel).trim();
+    if (/high|confirm|available/i.test(cleanLabel)) {
+      tier = 'HIGH';
+      tierLabel = cleanLabel.includes('Chance') || cleanLabel.toLowerCase().includes('confirm') ? cleanLabel : `${cleanLabel} Chance`;
+      tierColor = 'emerald';
+    } else if (/medium|moderate/i.test(cleanLabel)) {
+      tier = 'MEDIUM';
+      tierLabel = cleanLabel.includes('Chance') ? cleanLabel : `${cleanLabel} Chance`;
+      tierColor = 'amber';
+    } else if (/low/i.test(cleanLabel)) {
+      tier = 'LOW';
+      tierLabel = cleanLabel.includes('Chance') ? cleanLabel : `${cleanLabel} Chance`;
+      tierColor = 'rose';
+    }
+  }
+
   // Build transparent reasons
   const reasons = [
-    `Quota: ${quotaConfig.name} (${quotaConfig.description})`,
+    hasLivePercentage
+      ? `Live predictive clearance model: ${probability}% (${tierLabel})`
+      : `Quota: ${quotaConfig.name} (${quotaConfig.description})`,
     seatsCleared > 0
       ? `${seatsCleared} seats have already cleared since booking (${normBooking} ➔ ${normCurrent}).`
       : 'Ticket is currently holding position in queue.',
@@ -675,10 +708,16 @@ export function transformLivePnr(clean, live) {
       coach: isCnf || isRac ? (p.Coach || p.CurrentCoachId || '--').trim() : '--',
       berthNumber: isCnf ? (p.Berth !== undefined && p.Berth !== null && p.Berth !== '' ? p.Berth : '--') : '--',
       berthType: isCnf ? (p.CurrentBerthCode || p.BookingBerthCode || '--') : '--',
+      predictionPercentage: p.PredictionPercentage ?? null,
+      prediction: p.Prediction ?? null,
     };
   });
 
   const primaryPassenger = passengers[0] || { currentStatus: 'WL', bookingStatus: 'WL' };
+  const rawPax0 = live.PassengerStatus?.[0] || {};
+  const livePredictionPercentage = rawPax0.PredictionPercentage ?? live.PredictionPercentage ?? null;
+  const livePredictionLabel = rawPax0.Prediction ?? live.Prediction ?? rawPax0.ConfirmTktStatus ?? null;
+
   const travelClass = live.Class || 'SL';
   const totalFare = parseInt(live.BookingFare || live.TicketFare || '1200', 10);
 
@@ -687,6 +726,8 @@ export function transformLivePnr(clean, live) {
     bookingStatus: primaryPassenger.bookingStatus,
     travelClass,
     daysUntilJourney,
+    livePredictionPercentage,
+    livePredictionLabel,
   });
 
   const refund = calculateCancellationRefund({
