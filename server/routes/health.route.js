@@ -5,14 +5,24 @@ import { successResponse } from '../utils/apiResponse.js';
 import { metricsService } from '../services/metrics.service.js';
 import { providerCircuitBreaker } from '../services/circuitBreaker.js';
 import { getProviderHealth } from '../providers/index.js';
+import { fetchLiveTrainComposition } from '../services/irctcLive.service.js';
 
 export const healthRouter = Router();
 
-healthRouter.get('/', (req, res) => {
+healthRouter.get('/', async (req, res) => {
   const dbStatus = getDBStatus();
   const metrics = metricsService.getSnapshot();
   const circuit = providerCircuitBreaker.getState();
   const providerHealth = getProviderHealth();
+
+  let irctcDiagnostic = null;
+  if (req.query.checkIrctc === '1') {
+    try {
+      irctcDiagnostic = await fetchLiveTrainComposition('12875', '2026-10-11', 'BBS');
+    } catch (e) {
+      irctcDiagnostic = { caughtError: e.message };
+    }
+  }
 
   return res.json(
     successResponse({
@@ -25,6 +35,7 @@ healthRouter.get('/', (req, res) => {
       uptime: process.uptime(),
       uptimeSeconds: process.uptime(),
       circuitBreaker: circuit.state,
+      irctcDiagnostic,
       telemetry: {
         hitRatePercent: metrics.hitRatePercent,
         requestsTotal: metrics.counters.requestsTotal,

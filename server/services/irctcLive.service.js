@@ -93,10 +93,12 @@ export async function fetchLiveTrainComposition(trainNo, jDate, boardingStation)
       });
 
       if (!res.ok) {
+        const errText = await res.text().catch(() => '');
+        console.error(`[IRCTC Live] HTTP ${res.status} ${res.statusText}: ${errText.slice(0, 200)}`);
         if (res.status === 429) {
           triggerRateLimitCooldown(30);
         }
-        return { success: false, error: `HTTP ${res.status}` };
+        return { success: false, error: `HTTP ${res.status}: ${errText.slice(0, 150)}` };
       }
 
       const data = await res.json();
