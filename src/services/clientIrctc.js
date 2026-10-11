@@ -1,0 +1,80 @@
+/**
+ * Client-Side Direct IRCTC Online Reservation Chart Synchronization Service
+ *
+ * Official IRCTC online-charts APIs:
+ * - https://www.irctc.co.in/online-charts/api/trainComposition
+ * - https://www.irctc.co.in/online-charts/api/vacantBerth
+ *
+ * Key Architectural Advantage:
+ * IRCTC enables `Access-Control-Allow-Origin: *` with `POST, OPTIONS` support.
+ * By querying directly from the passenger's browser on an Indian ISP connection (Jio, Airtel, Vi, etc.),
+ * requests bypass datacenter/cloud IP restrictions (e.g. AWS/Vercel Akamai blocks) and retrieve
+ * 100% official, real-time IRCTC chart timestamps and coach composition directly.
+ */
+
+const clientCache = new Map();
+
+/**
+ * Fetch Live Train Composition & Chart Metadata directly from IRCTC via client browser
+ * @param {string} trainNo 5-digit train number
+ * @param {string} jDate YYYY-MM-DD
+ * @param {string} boardingStation Station code (e.g. BBS)
+ * @returns {Promise<Object|null>}
+ */
+export async function fetchBrowserTrainComposition(trainNo, jDate, boardingStation) {
+  if (typeof window === 'undefined') return null;
+  if (!trainNo || !jDate || !boardingStation) return null;
+
+  const key = `comp:${trainNo}:${jDate}:${boardingStation}`;
+  if (clientCache.has(key)) {
+    const item = clientCache.get(key);
+    if (Date.now() - item.ts < 2 * 60 * 1000) {
+      return item.data;
+    }
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 4500);
+
+  try {
+    const res = await fetch('https://www.irctc.co.in/online-charts/api/trainComposition', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        trainNo: String(trainNo).trim(),
+        jDate: String(jDate).trim(),
+        boardingStation: String(boardingStation).trim().toUpperCase(),
+      }),
+      signal: controller.signal,
+    });
+
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data.error || !data.cdd) return null;
+
+    const result = {
+      success: true,
+      isPrepared: Boolean(data.chartOneDate),
+      trainNo: data.trainNo,
+      trainName: data.trainName,
+      from: data.from,
+      to: data.to,
+      trainStartDate: data.trainStartDate,
+      chartOneDate: data.chartOneDate,
+      chartTwoDate: data.chartTwoDate,
+      remote: data.remote,
+      nextRemote: data.nextRemote,
+      avlRemoteForBooking: data.avlRemoteForBooking || data.nextRemote || null,
+      coaches: data.cdd || [],
+    };
+
+    clientCache.set(key, { data: result, ts: Date.now() });
+    return result;
+  } catch (_e) {
+    return null;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}

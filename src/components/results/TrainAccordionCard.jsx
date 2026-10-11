@@ -1,7 +1,9 @@
+import { useState, useEffect } from 'react';
 import { ChevronDown, ChevronUp, ShieldCheck, Train, CheckCircle2, Clock } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { VacantBerthsGrid } from '@/components/results/VacantBerthsGrid';
+import { fetchBrowserTrainComposition } from '@/services/clientIrctc';
 
 export function TrainAccordionCard({
   train,
@@ -12,10 +14,37 @@ export function TrainAccordionCard({
   toStation,
   selectedClass,
 }) {
+  const [liveBrowserComp, setLiveBrowserComp] = useState(null);
+
+  const trainNumber = train?.trainNumber;
+  const isDeparted = Boolean(
+    train?.isDeparted ||
+    train?.chartStatus === 'DEPARTED' ||
+    (train?.chartLabel && train.chartLabel.toLowerCase().includes('departed'))
+  );
+  const chartOneDate = train?.chartOneDate;
+  const journeyDate = train?.journeyDate;
+
+  useEffect(() => {
+    let isMounted = true;
+    if (train && !chartOneDate && !isDeparted && trainNumber && fromStation) {
+      const jDate = journeyDate || new Date().toISOString().split('T')[0];
+      fetchBrowserTrainComposition(trainNumber, jDate, fromStation)
+        .then((comp) => {
+          if (isMounted && comp && comp.success) {
+            setLiveBrowserComp(comp);
+          }
+        })
+        .catch(() => {});
+    }
+    return () => {
+      isMounted = false;
+    };
+  }, [train, trainNumber, fromStation, chartOneDate, isDeparted, journeyDate]);
+
   if (!train) return null;
 
   const {
-    trainNumber,
     trainName,
     departureTime = '--:--',
     arrivalTime = '--:--',
@@ -32,22 +61,21 @@ export function TrainAccordionCard({
     isBestMatch = false,
   } = train;
 
-  const isDeparted = Boolean(
-    train.isDeparted ||
-    train.chartStatus === 'DEPARTED' ||
-    (train.chartLabel && train.chartLabel.toLowerCase().includes('departed'))
-  );
+  const effectiveChartOneDate = train.chartOneDate || liveBrowserComp?.chartOneDate;
+  const effectiveChartTwoDate = train.chartTwoDate || liveBrowserComp?.chartTwoDate;
+  const effectiveAvlRemote = train.avlRemoteForBooking || liveBrowserComp?.avlRemoteForBooking;
 
   const isChartActuallyPrepared = Boolean(
     isChartPrepared ||
     train.chartTimings?.isFirstChartDone ||
     train.chartStatus === 'CHART_PREPARED' ||
     train.chartStatus === 'FINAL_CHART' ||
-    train.chartOneDate
+    effectiveChartOneDate
   );
 
   const isTTEOnly = Boolean(
     train.bookingChannel === 'TTE_ONLY' ||
+    Boolean(effectiveChartTwoDate && fromStation && (!effectiveAvlRemote || effectiveAvlRemote !== fromStation)) ||
     (train.chartTimings?.isSecondChartDone && !train.chartTimings?.canBookOnline && !isDeparted)
   );
 
@@ -75,14 +103,26 @@ export function TrainAccordionCard({
 
   const isFinalChartDone = Boolean(
     train.chartTimings?.isSecondChartDone ||
-    train.chartTwoDate ||
+    effectiveChartTwoDate ||
     isDeparted ||
     train.chartStatus === 'FINAL_CHART'
   );
-  let firstChartText = train.chartTimings?.firstChartDisplay ||
-    (train.chartOneDate ? `Prepared (${train.chartOneDate.split(' ')[1] || train.chartOneDate})` : (isDeparted ? 'Prepared' : 'Scheduled'));
-  let finalChartText = train.chartTimings?.finalChartDisplay ||
-    (train.chartTwoDate ? `Finalized (${train.chartTwoDate.split(' ')[1] || train.chartTwoDate})` : (isDeparted ? 'Finalized' : '~30m before dep'));
+
+  const formatTimeOnly = (dtStr) => {
+    if (!dtStr) return '';
+    if (dtStr.includes(' ')) {
+      return dtStr.split(' ')[1].slice(0, 5);
+    }
+    return dtStr.slice(0, 5);
+  };
+
+  let firstChartText = effectiveChartOneDate
+    ? `Prepared at ${formatTimeOnly(effectiveChartOneDate)}`
+    : (train.chartTimings?.firstChartDisplay || (isDeparted ? 'Prepared' : 'Scheduled'));
+
+  let finalChartText = effectiveChartTwoDate
+    ? `Finalized at ${formatTimeOnly(effectiveChartTwoDate)}`
+    : (train.chartTimings?.finalChartDisplay || (isDeparted ? 'Finalized' : '~30m before dep'));
 
   // If train has departed, charts must never say "Scheduled"
   if (isDeparted) {

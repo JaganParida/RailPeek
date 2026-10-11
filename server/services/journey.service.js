@@ -998,6 +998,7 @@ export async function findUsableBerths(params) {
     return {
       trainNumber: tNum,
       trainName: train.name || train.trainName,
+      journeyDate: date,
       departureTime: train.departureTime || '--:--',
       arrivalTime: train.arrivalTime || '--:--',
       durationFormatted: formatDuration(durationMinutes),
