@@ -147,6 +147,7 @@ export function PnrStatusPage() {
         travelClass: data.travelClass,
         currentStatus: primaryStatus,
         savedAt: new Date().toISOString(),
+        fullData: data,
       };
       const updated = [newItem, ...filtered].slice(0, 8); // Keep last 8 tickets
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
@@ -373,14 +374,19 @@ export function PnrStatusPage() {
     }
 
     try {
-      const url = `/api/v1/pnr/${clean}${isForce ? '?force=true' : ''}`;
-      const res = await fetch(url);
+      const url = `/api/v1/pnr/${clean}?_t=${Date.now()}${isForce ? '&force=true' : ''}`;
+      const res = await fetch(url, {
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          Pragma: 'no-cache',
+        },
+      });
       const json = await res.json();
 
       if (!res.ok || !json.success) {
         const localCopy = savedPnrs.find((p) => p.pnrNumber === clean);
-        if (localCopy) {
-          setPnrData(localCopy);
+        if (localCopy && (localCopy.fullData || localCopy.passengers)) {
+          setPnrData(localCopy.fullData || localCopy);
           setRefreshNotice(json?.error?.message || 'Indian Railways server is currently busy. Showing your previously recorded status.');
           setError('');
         } else {
@@ -393,7 +399,7 @@ export function PnrStatusPage() {
         savePnrLocally(json.data);
 
         // Update cooldown and notices from cache metadata
-        if (json.data?.cache?.cooldownRemaining) {
+        if (typeof json.data?.cache?.cooldownRemaining === 'number') {
           setCooldown(json.data.cache.cooldownRemaining);
         }
         if (json.data?.cache?.cooldownNotice) {
@@ -404,8 +410,8 @@ export function PnrStatusPage() {
       }
     } catch (_err) {
       const localCopy = savedPnrs.find((p) => p.pnrNumber === clean);
-      if (localCopy) {
-        setPnrData(localCopy);
+      if (localCopy && (localCopy.fullData || localCopy.passengers)) {
+        setPnrData(localCopy.fullData || localCopy);
         setRefreshNotice('Network connection timed out. Showing your previously recorded status.');
         setError('');
       } else {

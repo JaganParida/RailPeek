@@ -152,11 +152,24 @@ export function calculateConfirmationProbability({
     };
   }
 
+  // Parse upstream live percentage if provided
+  let hasLivePercentage = false;
+  let parsedLiveProb = null;
+  if (livePredictionPercentage !== null && livePredictionPercentage !== undefined) {
+    const cleanNum = parseInt(String(livePredictionPercentage).replace('%', '').trim(), 10);
+    if (!isNaN(cleanNum) && cleanNum >= 0 && cleanNum <= 100) {
+      parsedLiveProb = cleanNum;
+      hasLivePercentage = true;
+    }
+  }
+
   // 2. If RAC (Reservation Against Cancellation)
   if (normCurrent.startsWith('RAC')) {
     const racMatch = normCurrent.match(/\d+/);
     const racNum = racMatch ? parseInt(racMatch[0], 10) : 10;
-    const prob = Math.min(98, Math.max(85, 98 - racNum * 1.5));
+    const prob = hasLivePercentage
+      ? parsedLiveProb
+      : Math.min(98, Math.max(85, 98 - racNum * 1.5));
 
     return {
       probability: Math.round(prob),
@@ -164,7 +177,9 @@ export function calculateConfirmationProbability({
       tierLabel: 'Almost Certain (RAC)',
       tierColor: 'emerald',
       reasons: [
-        'RAC guarantees your right to board and travel on the train with a confirmed seat.',
+        hasLivePercentage
+          ? `Live predictive clearance model: ${Math.round(prob)}% (RAC Boarding Confirmed)`
+          : 'RAC guarantees your right to board and travel on the train with a confirmed seat.',
         'Historically, over 90% of RAC tickets get converted to full sleeping berths at final chart preparation.',
       ],
       advice: 'You have confirmed boarding rights. Wait for final chart preparation for berth upgrade.',
@@ -218,17 +233,6 @@ export function calculateConfirmationProbability({
     rawProb += Math.round(clearanceVelocity * 14);
   }
 
-  // Parse upstream live percentage if provided
-  let hasLivePercentage = false;
-  let parsedLiveProb = null;
-  if (livePredictionPercentage !== null && livePredictionPercentage !== undefined) {
-    const cleanNum = parseInt(String(livePredictionPercentage).replace('%', '').trim(), 10);
-    if (!isNaN(cleanNum) && cleanNum >= 0 && cleanNum <= 100) {
-      parsedLiveProb = cleanNum;
-      hasLivePercentage = true;
-    }
-  }
-
   // Use live prediction if available, else clamped statistical probability (5% to 94%)
   const probability = hasLivePercentage ? parsedLiveProb : Math.min(94, Math.max(5, Math.round(rawProb)));
 
@@ -250,18 +254,22 @@ export function calculateConfirmationProbability({
   // Adopt upstream live prediction label if provided
   if (livePredictionLabel) {
     const cleanLabel = String(livePredictionLabel).trim();
-    if (/high|confirm|available/i.test(cleanLabel)) {
+    if (/high/i.test(cleanLabel)) {
       tier = 'HIGH';
-      tierLabel = cleanLabel.includes('Chance') || cleanLabel.toLowerCase().includes('confirm') ? cleanLabel : `${cleanLabel} Chance`;
+      tierLabel = 'High Chance';
       tierColor = 'emerald';
     } else if (/medium|moderate/i.test(cleanLabel)) {
       tier = 'MEDIUM';
-      tierLabel = cleanLabel.includes('Chance') ? cleanLabel : `${cleanLabel} Chance`;
+      tierLabel = 'Medium Chance';
       tierColor = 'amber';
     } else if (/low/i.test(cleanLabel)) {
       tier = 'LOW';
-      tierLabel = cleanLabel.includes('Chance') ? cleanLabel : `${cleanLabel} Chance`;
+      tierLabel = 'Low Chance';
       tierColor = 'rose';
+    } else if (/confirm|available/i.test(cleanLabel)) {
+      tier = 'HIGH';
+      tierLabel = cleanLabel.includes('Chance') ? cleanLabel : `${cleanLabel} Chance`;
+      tierColor = 'emerald';
     }
   }
 
@@ -672,6 +680,77 @@ export async function fetchLivePnrData(pnrNumber) {
 }
 
 /**
+ * Extracts live prediction probability and descriptive tier label from upstream railway payload.
+ * Supports:
+ * - Number percentages (e.g. 85, 0.85)
+ * - String percentages with % (e.g. "85% Chance", "85%")
+ * - Pure numeric string fields (e.g. "85")
+ * - Qualitative verbal tiers (e.g. "High Chance", "Confirm", "Low Chance")
+ */
+export function extractLivePredictionData(rawPax, liveData) {
+  const p = rawPax || {};
+  const l = liveData || {};
+
+  const candidates = [
+    p.PredictionPercentage,
+    l.PredictionPercentage,
+    p.Prediction,
+    l.Prediction,
+    p.ConfirmTktStatus,
+  ];
+
+  let parsedProb = null;
+
+  for (const c of candidates) {
+    if (c === null || c === undefined || c === '') continue;
+
+    if (typeof c === 'number' && !isNaN(c)) {
+      if (c > 0 && c <= 1) {
+        parsedProb = Math.round(c * 100);
+        break;
+      }
+      if (c >= 0 && c <= 100) {
+        parsedProb = Math.round(c);
+        break;
+      }
+    }
+
+    const str = String(c).trim();
+    const percentMatch = str.match(/(\d{1,3})\s*%/);
+    if (percentMatch) {
+      const num = parseInt(percentMatch[1], 10);
+      if (num >= 0 && num <= 100) {
+        parsedProb = num;
+        break;
+      }
+    }
+
+    const pureNumMatch = str.match(/^(\d{1,3})$/);
+    if (pureNumMatch) {
+      const num = parseInt(pureNumMatch[1], 10);
+      if (num >= 0 && num <= 100) {
+        parsedProb = num;
+        break;
+      }
+    }
+  }
+
+  const rawLabel = p.Prediction || l.Prediction || p.ConfirmTktStatus || '';
+  const cleanLabel = String(rawLabel).trim();
+
+  // If no percentage was found in numeric format or '%', infer from qualitative certainty label
+  if (parsedProb === null && cleanLabel) {
+    if (/high/i.test(cleanLabel)) parsedProb = 85;
+    else if (/medium|moderate/i.test(cleanLabel)) parsedProb = 58;
+    else if (/low/i.test(cleanLabel)) parsedProb = 28;
+    else if (/no\s*chance/i.test(cleanLabel)) parsedProb = 12;
+    else if (/confirm/i.test(cleanLabel)) parsedProb = 90;
+  }
+
+  return { parsedProb, cleanLabel };
+}
+
+/**
  * Transforms live PNR response into standardized RailPeek format
  */
 export function transformLivePnr(clean, live) {
@@ -700,6 +779,7 @@ export function transformLivePnr(clean, live) {
     const curStatus = (p.CurrentStatus || 'WL').trim();
     const isCnf = curStatus.startsWith('CNF') || curStatus.startsWith('CONFIRM');
     const isRac = curStatus.startsWith('RAC');
+    const paxPred = extractLivePredictionData(p, live);
 
     return {
       passengerNumber: p.Number || idx + 1,
@@ -708,15 +788,15 @@ export function transformLivePnr(clean, live) {
       coach: isCnf || isRac ? (p.Coach || p.CurrentCoachId || '--').trim() : '--',
       berthNumber: isCnf ? (p.Berth !== undefined && p.Berth !== null && p.Berth !== '' ? p.Berth : '--') : '--',
       berthType: isCnf ? (p.CurrentBerthCode || p.BookingBerthCode || '--') : '--',
-      predictionPercentage: p.PredictionPercentage ?? null,
-      prediction: p.Prediction ?? null,
+      predictionPercentage: paxPred.parsedProb,
+      prediction: paxPred.cleanLabel || p.Prediction || null,
     };
   });
 
   const primaryPassenger = passengers[0] || { currentStatus: 'WL', bookingStatus: 'WL' };
   const rawPax0 = live.PassengerStatus?.[0] || {};
-  const livePredictionPercentage = rawPax0.PredictionPercentage ?? live.PredictionPercentage ?? null;
-  const livePredictionLabel = rawPax0.Prediction ?? live.Prediction ?? rawPax0.ConfirmTktStatus ?? null;
+  const { parsedProb: livePredictionPercentage, cleanLabel: livePredictionLabel } =
+    extractLivePredictionData(rawPax0, live);
 
   const travelClass = live.Class || 'SL';
   const totalFare = parseInt(live.BookingFare || live.TicketFare || '1200', 10);
@@ -1056,6 +1136,11 @@ export async function resolvePnrStatus(pnrNumber, { force = false } = {}) {
         cooldownNotice: `Railway servers update gradually. Recent status from ${ageSeconds}s ago is already up to date. Cooldown: ${cooldownRemaining}s remaining.`,
       });
     }
+  }
+
+  // Invalidate old cache entry when explicit force refresh is triggered
+  if (force) {
+    pnrMemoryCache.delete(clean);
   }
 
   // 2. Coalesce concurrent requests into a single execution via SingleFlight

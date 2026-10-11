@@ -11,6 +11,10 @@ export const pnrRouter = Router();
 pnrRouter.get('/:pnrNumber', async (req, res) => {
   const { pnrNumber } = req.params;
 
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+
   if (!isValidPnr(pnrNumber)) {
     return res.status(400).json(
       errorResponse(
