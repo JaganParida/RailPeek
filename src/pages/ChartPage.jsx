@@ -184,13 +184,13 @@ export function ChartPage() {
           </div>
 
           {/* Clean Train Switcher Dropdown (From Searched Route) */}
-          <div className="flex items-center gap-2 ml-auto">
+          <div className="flex items-center gap-2 sm:ml-auto shrink-0 max-w-full">
             {availableTrainsOnRoute.length > 0 ? (
-              <div className="relative">
+              <div className="relative max-w-full">
                 <select
                   value={selectedTrain}
                   onChange={(e) => handleTrainChange(e.target.value)}
-                  className="appearance-none bg-white text-slate-900 text-xs font-bold px-3 py-1.5 pr-7 rounded-lg border border-slate-300 shadow-xs hover:border-slate-400 focus:outline-none focus:border-blue-500 cursor-pointer"
+                  className="appearance-none bg-white text-slate-900 text-xs font-bold px-3 py-1.5 pr-7 rounded-lg border border-slate-300 shadow-xs hover:border-slate-400 focus:outline-none focus:border-blue-500 cursor-pointer max-w-[210px] sm:max-w-none truncate"
                 >
                   {availableTrainsOnRoute.map((t) => (
                     <option key={t.trainNumber} value={t.trainNumber}>
@@ -209,10 +209,10 @@ export function ChartPage() {
         </div>
 
         {/* Minimal Control Bar: Class filter + 5-digit train search */}
-        <div className="p-3 rounded-xl bg-white border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-2.5">
-          {/* Class Filter Selector */}
-          <div className="flex items-center gap-1 sm:gap-1.5 flex-wrap">
-            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mr-1 select-none">
+        <div className="p-2.5 sm:p-3 rounded-xl bg-white border border-slate-200 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-3">
+          {/* Class Filter Selector: Clean single horizontal row, never wraps CC */}
+          <div className="flex items-center gap-1 sm:gap-1.5 overflow-x-auto scrollbar-none py-0.5 shrink-0">
+            <span className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wider mr-0.5 sm:mr-1 shrink-0 select-none">
               Class:
             </span>
             {['SL', '3A', '2A', '1A', '2S', 'CC'].map((cls) => (
@@ -220,7 +220,7 @@ export function ChartPage() {
                 key={cls}
                 type="button"
                 onClick={() => setSelectedClass(cls)}
-                className={`px-2.5 py-1 text-xs rounded-lg font-bold transition-all border cursor-pointer ${
+                className={`px-2 sm:px-2.5 py-1 text-xs rounded-lg font-bold transition-all border cursor-pointer shrink-0 whitespace-nowrap ${
                   selectedClass === cls
                     ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
                     : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
@@ -231,16 +231,16 @@ export function ChartPage() {
             ))}
           </div>
 
-          {/* Quick 5-Digit Train Search Input */}
-          <div className="flex items-center gap-1.5 ml-auto">
-            <div className="relative">
+          {/* Quick 5-Digit Train Search Input (Clean full-width on mobile, right-aligned on desktop) */}
+          <div className="flex items-center gap-1.5 sm:ml-auto w-full sm:w-auto">
+            <div className="relative flex-1 sm:flex-none">
               <input
                 type="text"
                 maxLength={5}
                 value={customTrainInput}
                 onChange={(e) => setCustomTrainInput(e.target.value.replace(/\D/g, ''))}
                 placeholder="Train No. (e.g. 12882)"
-                className="w-40 sm:w-44 h-8 px-2.5 pr-8 rounded-lg border border-slate-300 bg-slate-50 text-xs font-mono font-bold text-slate-900 placeholder-slate-400 focus:bg-white focus:border-blue-500 focus:outline-none"
+                className="w-full sm:w-44 h-8 px-2.5 pr-8 rounded-lg border border-slate-300 bg-slate-50 text-xs font-mono font-bold text-slate-900 placeholder-slate-400 focus:bg-white focus:border-blue-500 focus:outline-none"
               />
               <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
             </div>
@@ -254,7 +254,7 @@ export function ChartPage() {
                   setCustomTrainInput('');
                 }
               }}
-              className="h-8 text-xs font-bold bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40"
+              className="h-8 px-3 text-xs font-bold bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40 shrink-0"
             >
               Load
             </Button>

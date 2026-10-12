@@ -15,6 +15,8 @@ import {
   Info,
   Loader2,
   Search,
+  Compass,
+  ChevronRight,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Alert } from '@/components/ui/Alert';
@@ -283,6 +285,19 @@ export function SearchResultsPage() {
     setExpandedTrainNo((prev) => (prev === tNum ? null : tNum));
   };
 
+  // Active train currently open/viewed that has vacant berths
+  const activeViewingTrain = useMemo(() => {
+    if (!expandedTrainNo) return null;
+    const train =
+      upcomingTrains.find((t) => t.trainNumber === expandedTrainNo) ||
+      displayTrains.find((t) => t.trainNumber === expandedTrainNo) ||
+      allDisplayTrains.find((t) => t.trainNumber === expandedTrainNo);
+    if (train && (train.totalVacantCount > 0 || (train.availableBerths && train.availableBerths.length > 0))) {
+      return train;
+    }
+    return null;
+  }, [expandedTrainNo, upcomingTrains, displayTrains, allDisplayTrains]);
+
   const handleSwitchDate = (newDate) => {
     const params = new URLSearchParams(searchParams);
     params.set('date', newDate);
@@ -531,6 +546,46 @@ export function SearchResultsPage() {
             </div>
           </div>
         </div>
+
+        {/* Single Non-Wrapping Interactive Coach Layout Redirect Banner (Only when a train with vacant berths is open/viewing) */}
+        {activeViewingTrain && (
+          <div className="p-2 sm:p-2.5 rounded-xl bg-white border border-emerald-300 shadow-xs flex items-center justify-between gap-2 overflow-hidden">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-700 shrink-0">
+                <Train className="w-4 h-4" />
+              </div>
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="font-mono text-xs sm:text-sm font-black text-slate-900 shrink-0">
+                  {activeViewingTrain.trainNumber}
+                </span>
+                <span className="text-xs font-bold text-slate-700 truncate hidden xs:inline max-w-[140px] sm:max-w-[220px]">
+                  {activeViewingTrain.trainName}
+                </span>
+                <span className="text-[10px] sm:text-[11px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded shrink-0 whitespace-nowrap">
+                  {activeViewingTrain.totalVacantCount} Vacant
+                </span>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                const rawBerths = activeViewingTrain.availableBerths || [];
+                const targetCoach = rawBerths?.[0]?.coach || rawBerths?.[0]?.coachId || '';
+                const coachParam = targetCoach ? `&coach=${encodeURIComponent(targetCoach)}` : '';
+                const trainClass = activeViewingTrain.travelClass || selectedClass || '3A';
+                const targetUrl = `/coach?train=${encodeURIComponent(activeViewingTrain.trainNumber)}${coachParam}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&date=${encodeURIComponent(date || '')}&class=${encodeURIComponent(trainClass)}`;
+                navigate(targetUrl);
+              }}
+              className="px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-[11px] sm:text-xs flex items-center gap-1 transition-all shadow-xs shrink-0 whitespace-nowrap cursor-pointer"
+              title={`View Interactive Coach Bogie & Seat Layout for Train ${activeViewingTrain.trainNumber}`}
+            >
+              <Compass className="w-3.5 h-3.5 text-white shrink-0" />
+              <span>View Coach Layout</span>
+              <ChevronRight className="w-3.5 h-3.5 text-white shrink-0" />
+            </button>
+          </div>
+        )}
 
 
         {/* Notice if user selected a train that does NOT run on this date */}
