@@ -489,7 +489,7 @@ export function VacantBerthsGrid({
           </div>
 
           {/* Vertical Journey Route Timeline with Left Station Locator Nodes */}
-          <div className="p-2 sm:p-4 bg-white">
+          <div className="p-1.5 sm:p-4 bg-white">
             <div className="space-y-0">
               {journeyStages.map((stage, idx) => {
                 const segKey = stage.item ? `seat-${idx}-${stage.item.from}-${stage.item.to}` : '';
@@ -504,9 +504,9 @@ export function VacantBerthsGrid({
                 const safeCurrentPage = Math.min(Math.max(1, currentPage), totalPages);
 
                 return (
-                  <div key={stage.id} className="flex items-stretch gap-2 sm:gap-4 group">
+                  <div key={stage.id} className="flex items-stretch gap-1.5 sm:gap-4 group">
                     {/* Left Vertical Route Locator Column */}
-                    <div className="w-10 sm:w-14 shrink-0 flex flex-col items-center">
+                    <div className="w-8 sm:w-12 shrink-0 flex flex-col items-center">
                       {/* Station Node Circle matching the exact ribbon styling */}
                       <div
                         className={`w-5 h-5 sm:w-6 sm:h-6 rounded-full flex items-center justify-center text-[9px] sm:text-[10px] font-bold border shrink-0 transition-all ${
@@ -531,12 +531,12 @@ export function VacantBerthsGrid({
                       </div>
 
                       {/* Station Code */}
-                      <span className="text-[10px] sm:text-[11px] font-mono font-bold text-slate-900 mt-1 leading-none text-center">
+                      <span className="text-[9.5px] sm:text-[11px] font-mono font-bold text-slate-900 mt-1 leading-none text-center">
                         {stage.stationCode}
                       </span>
 
                       {/* Station Sub-label */}
-                      <span className="text-[8px] sm:text-[9px] font-semibold text-slate-500 mt-0.5 leading-tight text-center w-full break-words">
+                      <span className="text-[7.5px] sm:text-[9px] font-semibold text-slate-500 mt-0.5 leading-tight text-center w-full break-words">
                         <span className="sm:hidden">{stage.shortLabel || stage.stationLabel}</span>
                         <span className="hidden sm:inline">{stage.stationLabel}</span>
                       </span>
@@ -596,7 +596,7 @@ export function VacantBerthsGrid({
                           {/* Unified Responsive Seat Deck: Mobile 2-col, Desktop 4-col with In-Container Pagination */}
                           <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-2 sm:p-2.5 space-y-2">
                             {/* Bounded Scrollable Seat Container (Internal scroll, never overflows container) */}
-                            <div className="max-h-[165px] sm:max-h-[180px] overflow-y-auto scrollbar-thin pr-0.5">
+                            <div className="max-h-[210px] sm:max-h-[230px] overflow-y-auto scrollbar-thin pr-1 sm:pr-1.5">
                               {seatList.length === 1 ? (
                                 <div className="flex items-center">
                                   <button
@@ -607,7 +607,7 @@ export function VacantBerthsGrid({
                                     className="px-2.5 py-1.5 rounded-lg text-xs font-mono font-bold flex items-center gap-1.5 bg-slate-900 text-white border-slate-900 shadow-xs ring-1 ring-slate-900 cursor-pointer shrink-0"
                                   >
                                     <Check className="w-3 h-3 text-emerald-400 shrink-0" />
-                                    <span className="font-mono text-xs font-bold tracking-tight whitespace-nowrap">
+                                    <span className="font-mono text-xs font-bold tracking-normal tabular-nums whitespace-nowrap">
                                       {seatList[0].coach}-{seatList[0].berthNumber}
                                     </span>
                                     <span className="text-[9px] font-sans font-bold px-1.5 py-0.5 rounded border bg-slate-800 text-slate-200 border-slate-700 whitespace-nowrap leading-none">
@@ -616,7 +616,7 @@ export function VacantBerthsGrid({
                                   </button>
                                 </div>
                               ) : (
-                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 sm:gap-2">
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 sm:gap-2 w-full min-w-0">
                                   {seatList.map((b, bIdx) => {
                                     const pageOfThisSeat = Math.floor(bIdx / SEATS_PAGE_SIZE) + 1;
                                     const isVisibleOnCurrentPage = pageOfThisSeat === safeCurrentPage;
@@ -630,20 +630,20 @@ export function VacantBerthsGrid({
                                         onClick={() => handleSelectSeat(segKey, b)}
                                         title={`Seat ${b.coach}-${b.berthNumber} (${meta.label})`}
                                         style={{ display: isVisibleOnCurrentPage ? undefined : 'none' }}
-                                        className={`px-1.5 sm:px-2.5 py-1.5 rounded-lg text-xs font-mono font-bold flex items-center justify-between gap-1 border transition-all cursor-pointer select-none ${
+                                        className={`w-full min-w-0 px-1.5 sm:px-2.5 py-1.5 sm:py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 sm:gap-2 border transition-all cursor-pointer select-none overflow-hidden ${
                                           isSelected
                                             ? 'bg-slate-900 text-white border-slate-900 shadow-xs ring-1 ring-slate-900'
                                             : 'bg-white text-slate-800 border-slate-200 hover:border-slate-400 hover:bg-slate-50'
                                         }`}
                                       >
-                                        <div className="flex items-center gap-1 shrink-0 whitespace-nowrap min-w-0">
+                                        <div className="flex items-center gap-1 shrink-0 whitespace-nowrap">
                                           {isSelected && <Check className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-emerald-400 shrink-0" />}
-                                          <span className="font-mono text-[11px] sm:text-xs font-bold tracking-tight whitespace-nowrap">
+                                          <span className="font-mono text-[11px] sm:text-xs font-bold tracking-normal tabular-nums whitespace-nowrap">
                                             {b.coach}-{b.berthNumber}
                                           </span>
                                         </div>
                                         <span
-                                          className={`text-[8.5px] sm:text-[9px] font-sans font-bold px-1 sm:px-1.5 py-0.5 rounded border shrink-0 whitespace-nowrap leading-none ${
+                                          className={`text-[8px] sm:text-[9px] font-sans font-extrabold px-1 sm:px-1.5 py-0.5 rounded border shrink-0 leading-none whitespace-nowrap ${
                                             isSelected
                                               ? 'bg-slate-800 text-slate-200 border-slate-700'
                                               : meta.badgeClass

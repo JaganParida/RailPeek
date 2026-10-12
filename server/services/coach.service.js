@@ -350,8 +350,15 @@ export async function getCoachVacancy({
             'SL': { fullJourney: 0 },
           },
         },
-        bays: [],
-        berths: [],
+        bays: groupBerthsIntoBays(baseBerths, normClass),
+        berths: baseBerths.map((b) => ({
+          ...b,
+          status: 'UNAVAILABLE',
+          statusLabel: 'Chart Not Prepared',
+          coveragePercent: 0,
+          occupiedSegments: [],
+          vacantSegments: [],
+        })),
         availableCoaches: getTrainCoaches(normTrain),
         routeStops: route.map((s) => ({
           stationCode: s.stationCode,
@@ -553,12 +560,18 @@ export async function getTrainCoachesSummary(trainNumber) {
 
   let source = 'demo';
   let isDemo = true;
+  let liveCoachesList = [];
   try {
     const todayStr = new Date().toISOString().slice(0, 10);
     const liveComp = await fetchLiveTrainComposition(normTrain, todayStr, route[0]?.stationCode || 'BBS');
-    if (liveComp.success && liveComp.isPrepared) {
-      source = 'live';
-      isDemo = false;
+    if (liveComp && (liveComp.success || liveComp.coaches)) {
+      if (liveComp.coaches && liveComp.coaches.length > 0) {
+        liveCoachesList = liveComp.coaches;
+      }
+      if (liveComp.isPrepared) {
+        source = 'live';
+        isDemo = false;
+      }
     }
   } catch (_e) {
     // Composition lookup fallback
@@ -568,8 +581,9 @@ export async function getTrainCoachesSummary(trainNumber) {
     trainNumber: normTrain,
     trainName: train.name,
     classes: train.classes,
-    availableCoaches,
-    defaultCoach,
+    availableCoaches: liveCoachesList.length > 0 ? liveCoachesList.map((c) => c.coachName) : availableCoaches,
+    coachesData: liveCoachesList,
+    defaultCoach: liveCoachesList[0]?.coachName || defaultCoach,
     origin: route[0]?.stationCode,
     originName: route[0]?.stationName,
     destination: route[route.length - 1]?.stationCode,
