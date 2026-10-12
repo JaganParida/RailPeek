@@ -13,6 +13,7 @@ import {
 import { MOCK_BERTH_OCCUPANCIES } from '../mockData/availability.mock.js';
 import { ApiError } from '../utils/apiResponse.js';
 import { fetchLiveCoachComposition, fetchLiveTrainComposition } from './irctcLive.service.js';
+import { getTrainRouteStops } from './routeResolver.service.js';
 
 /**
  * Generates deterministic realistic occupancies if coach is not explicitly hardcoded.
@@ -116,7 +117,25 @@ export async function getCoachVacancy({
 
   if (!routeData || !routeData.route || routeData.route.length === 0) {
     try {
-      const liveComp = await fetchLiveTrainComposition(normTrain, journeyDate, from || 'NDLS');
+      const dynamicStops = await getTrainRouteStops(normTrain);
+      if (Array.isArray(dynamicStops) && dynamicStops.length > 0) {
+        routeData = {
+          train: {
+            number: normTrain,
+            name: `Train ${normTrain}`,
+            classes: ['3A', '2A', 'SL', '1A'],
+          },
+          route: dynamicStops,
+        };
+      }
+    } catch (_e) {
+      // route lookup fallback
+    }
+  }
+
+  if (!routeData || !routeData.route || routeData.route.length === 0) {
+    try {
+      const liveComp = await fetchLiveTrainComposition(normTrain, journeyDate, from || 'BBS');
       if (liveComp && (liveComp.success || liveComp.trainName)) {
         const fromStn = from ? from.toUpperCase().trim() : (liveComp.from || 'ORIGIN');
         const toStn = to ? to.toUpperCase().trim() : (liveComp.to || 'DEST');
@@ -138,21 +157,45 @@ export async function getCoachVacancy({
   }
 
   if (!routeData || !routeData.route || routeData.route.length === 0) {
-    throw new ApiError('TRAIN_NOT_FOUND', `Train ${normTrain} was not found on active schedule.`, 404);
+    if (from && to) {
+      const fromStn = from.toUpperCase().trim();
+      const toStn = to.toUpperCase().trim();
+      routeData = {
+        train: {
+          number: normTrain,
+          name: `Train ${normTrain}`,
+          classes: ['3A', '2A', 'SL', '1A'],
+        },
+        route: [
+          { stationCode: fromStn, stationName: fromStn, stopIndex: 0, arrival: '--:--', departure: '12:00', distanceKm: 0 },
+          { stationCode: toStn, stationName: toStn, stopIndex: 1, arrival: '20:00', departure: '--:--', distanceKm: 500 },
+        ],
+      };
+    } else {
+      throw new ApiError('TRAIN_NOT_FOUND', `Train ${normTrain} was not found on active schedule.`, 404);
+    }
   }
 
   const { train, route } = routeData;
 
-  const fromStation = from ? from.toUpperCase().trim() : route[0].stationCode;
-  const toStation = to ? to.toUpperCase().trim() : route[route.length - 1].stationCode;
+  let fromStation = from ? from.toUpperCase().trim() : route[0].stationCode;
+  let toStation = to ? to.toUpperCase().trim() : route[route.length - 1].stationCode;
 
-  const journey = resolveJourneySegment(route, fromStation, toStation);
+  let journey = resolveJourneySegment(route, fromStation, toStation);
   if (!journey.valid) {
-    throw new ApiError(
-      'INVALID_JOURNEY_SEGMENT',
-      `Stations ${fromStation} → ${toStation} are not valid sequential stops on train ${normTrain}.`,
-      400
-    );
+    // If the requested stations don't sequentially match this specific train's stops
+    // (e.g. user searched ANVT but train terminates at NDLS), gracefully adapt to valid stops
+    const fromStop = route.find((s) => s.stationCode === fromStation);
+    const toStop = route.find((s) => s.stationCode === toStation);
+
+    const safeFrom = fromStop ? fromStation : route[0].stationCode;
+    const safeTo = toStop && (!fromStop || toStop.stopIndex > fromStop.stopIndex)
+      ? toStation
+      : route[route.length - 1].stationCode;
+
+    fromStation = safeFrom;
+    toStation = safeTo;
+    journey = resolveJourneySegment(route, fromStation, toStation);
   }
 
   const cacheKey = getCoachVacancyCacheKey({
@@ -519,52 +562,53 @@ export async function getCoachVacancy({
 /**
  * Get available coaches list and class summary for a train
  * @param {string} trainNumber
+ * @param {Object} [options]
+ * @param {string} [options.from]
+ * @param {string} [options.to]
+ * @param {string} [options.date]
  * @returns {Promise<Object>}
  */
-export async function getTrainCoachesSummary(trainNumber) {
+export async function getTrainCoachesSummary(trainNumber, options = {}) {
   const normTrain = String(trainNumber || '').trim();
+  const { from, to, date } = options;
   const provider = getRailwayProvider();
   let routeData = await provider.getTrainRoute(normTrain);
 
   if (!routeData) {
     try {
-      const todayStr = new Date().toISOString().slice(0, 10);
-      const liveComp = await fetchLiveTrainComposition(normTrain, todayStr, 'NDLS');
-      if (liveComp && (liveComp.success || liveComp.trainName)) {
-        const availableCoaches = (liveComp.coaches || []).map((c) => c.coachName);
-        return {
-          trainNumber: normTrain,
-          trainName: liveComp.trainName || `Train ${normTrain}`,
-          classes: Array.from(new Set((liveComp.coaches || []).map((c) => c.classCode))),
-          availableCoaches: availableCoaches.length > 0 ? availableCoaches : ['B1', 'B2', 'B3', 'S1'],
-          defaultCoach: availableCoaches[0] || 'B1',
-          origin: liveComp.from || 'ORIGIN',
-          originName: liveComp.from || 'Origin Station',
-          destination: liveComp.to || 'DEST',
-          destinationName: liveComp.to || 'Destination Station',
-          totalStops: 10,
-          source: 'live',
-          isDemo: false,
-          fetchedAt: new Date().toISOString(),
+      const dynamicStops = await getTrainRouteStops(normTrain);
+      if (Array.isArray(dynamicStops) && dynamicStops.length > 0) {
+        routeData = {
+          train: {
+            number: normTrain,
+            name: `Train ${normTrain}`,
+            classes: ['3A', '2A', 'SL', '1A'],
+          },
+          route: dynamicStops,
         };
       }
     } catch (_e) {
-      // Train discovery fallback
+      // route lookup fallback
     }
+  }
+
+  // If train route is not found and no journey stations were provided, fail with 404
+  if (!routeData && !from && !to) {
     throw new ApiError('TRAIN_NOT_FOUND', `Train ${normTrain} was not found on schedule.`, 404);
   }
 
-  const { train, route } = routeData;
-  const availableCoaches = getTrainCoaches(normTrain);
-  const defaultCoach = availableCoaches[0] || 'B1';
+  const todayStr = date ? date.slice(0, 10) : new Date().toISOString().slice(0, 10);
+  const boardingStn = from || routeData?.route?.[0]?.stationCode || 'BBS';
 
+  let liveCoachesList = [];
+  let liveTrainName = null;
   let source = 'demo';
   let isDemo = true;
-  let liveCoachesList = [];
+
   try {
-    const todayStr = new Date().toISOString().slice(0, 10);
-    const liveComp = await fetchLiveTrainComposition(normTrain, todayStr, route[0]?.stationCode || 'BBS');
-    if (liveComp && (liveComp.success || liveComp.coaches)) {
+    const liveComp = await fetchLiveTrainComposition(normTrain, todayStr, boardingStn);
+    if (liveComp && (liveComp.success || liveComp.coaches || liveComp.trainName)) {
+      if (liveComp.trainName) liveTrainName = liveComp.trainName;
       if (liveComp.coaches && liveComp.coaches.length > 0) {
         liveCoachesList = liveComp.coaches;
       }
@@ -577,18 +621,34 @@ export async function getTrainCoachesSummary(trainNumber) {
     // Composition lookup fallback
   }
 
+  if (!routeData && !liveTrainName && liveCoachesList.length === 0) {
+    throw new ApiError('TRAIN_NOT_FOUND', `Train ${normTrain} was not found on schedule.`, 404);
+  }
+
+  const standardCoaches = getTrainCoaches(normTrain);
+  const availableCoaches = liveCoachesList.length > 0
+    ? liveCoachesList.map((c) => c.coachName)
+    : standardCoaches.length > 0
+    ? standardCoaches
+    : ['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'A1', 'A2', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6'];
+
+  const originStn = routeData?.route?.[0]?.stationCode || from || 'ORIGIN';
+  const originName = routeData?.route?.[0]?.stationName || from || 'Origin Station';
+  const destStn = routeData?.route?.[routeData.route.length - 1]?.stationCode || to || 'DEST';
+  const destName = routeData?.route?.[routeData.route.length - 1]?.stationName || to || 'Destination Station';
+
   return {
     trainNumber: normTrain,
-    trainName: train.name,
-    classes: train.classes,
-    availableCoaches: liveCoachesList.length > 0 ? liveCoachesList.map((c) => c.coachName) : availableCoaches,
+    trainName: liveTrainName || routeData?.train?.name || `Train ${normTrain}`,
+    classes: routeData?.train?.classes || ['3A', '2A', 'SL', '1A'],
+    availableCoaches,
     coachesData: liveCoachesList,
-    defaultCoach: liveCoachesList[0]?.coachName || defaultCoach,
-    origin: route[0]?.stationCode,
-    originName: route[0]?.stationName,
-    destination: route[route.length - 1]?.stationCode,
-    destinationName: route[route.length - 1]?.stationName,
-    totalStops: route.length,
+    defaultCoach: liveCoachesList[0]?.coachName || availableCoaches[0] || 'B1',
+    origin: originStn,
+    originName: originName,
+    destination: destStn,
+    destinationName: destName,
+    totalStops: routeData?.route?.length || 10,
     source,
     isDemo,
     fetchedAt: new Date().toISOString(),

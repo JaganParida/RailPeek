@@ -534,19 +534,19 @@ export function SearchResultsPage() {
         </div>
 
         {/* Interactive Coach Layout CTA Button */}
-        <div className="flex items-center justify-between p-3 sm:p-3.5 rounded-xl bg-gradient-to-r from-blue-900 to-indigo-900 text-white shadow-xs">
+        <div className="flex items-center justify-between p-3 sm:p-3.5 rounded-xl bg-blue-50/80 border border-blue-200 shadow-xs">
           <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center shrink-0 border border-white/20">
-              <Compass className="w-4 h-4 text-emerald-400" />
+            <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center shrink-0 border border-blue-200 text-blue-700">
+              <Compass className="w-4 h-4 text-blue-600" />
             </div>
             <div className="min-w-0">
-              <div className="text-xs sm:text-sm font-bold text-white flex items-center gap-1.5">
+              <div className="text-xs sm:text-sm font-bold text-slate-900 flex items-center gap-1.5">
                 <span>Interactive Coach &amp; Seat Maps</span>
-                <span className="text-[9px] font-extrabold px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
+                <span className="text-[9px] font-extrabold px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 border border-emerald-300">
                   Visual Bogie Map
                 </span>
               </div>
-              <div className="text-[10px] sm:text-[11px] text-blue-200 truncate">
+              <div className="text-[10px] sm:text-[11px] text-slate-600 truncate">
                 Explore real coach layouts, window seats &amp; vacant berths for {from} &rarr; {to}
               </div>
             </div>
@@ -557,7 +557,7 @@ export function SearchResultsPage() {
               const defaultTrain = activeTrain || allDisplayTrains[0]?.trainNumber || '';
               navigate(`/coach?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&date=${encodeURIComponent(date)}&class=${encodeURIComponent(selectedClass)}${defaultTrain ? `&train=${encodeURIComponent(defaultTrain)}` : ''}`);
             }}
-            className="px-3 sm:px-3.5 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs shrink-0 flex items-center gap-1.5 transition-all shadow-xs cursor-pointer ml-2"
+            className="px-3 sm:px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shrink-0 flex items-center gap-1.5 transition-all shadow-xs cursor-pointer ml-2"
           >
             <span>View Coach Layout</span>
             <ArrowRight className="w-3.5 h-3.5" />

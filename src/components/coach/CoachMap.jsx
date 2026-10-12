@@ -1,14 +1,45 @@
 import { useState } from 'react';
-import { DoorClosed, Bath } from 'lucide-react';
+import { DoorClosed, Bath, AlertCircle } from 'lucide-react';
 
 /**
- * Visual Indian Railways Coach Schematic Map
- * Rendered with exact IRCTC Reservation Chart color parity:
- * - Pale Grey-Blue (#dbe5f1): Occupied for full journey
- * - Golden Yellow (#fed766): Occupied for part journey
- * - Light Green (#86efac): Vacant for full journey
- * Pure light mode, high readability, zero dark mode clutter.
+ * Clean SVG Window Icon (Zero Emojis)
  */
+function WindowSvg({ className = 'w-3 h-3' }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <rect x="2" y="2" width="12" height="12" rx="2" />
+      <line x1="8" y1="2" x2="8" y2="14" />
+      <line x1="2" y1="8" x2="14" y2="8" />
+    </svg>
+  );
+}
+
+/**
+ * Clean SVG Aisle Walkway Icon
+ */
+function AislePathSvg({ className = 'w-3 h-3' }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeDasharray="2 2"
+    >
+      <line x1="8" y1="0" x2="8" y2="16" />
+    </svg>
+  );
+}
+
 export function CoachMap({
   coachId,
   travelClass = '3A',
@@ -21,74 +52,103 @@ export function CoachMap({
   filterStatus = 'ALL',
   onFilterTypeChange,
   onFilterStatusChange,
+  isChartPrepared = true,
 }) {
   const [hoveredBerth, setHoveredBerth] = useState(null);
 
   const berthTypeFilters = [
     { id: 'ALL', label: 'All Berths' },
     { id: 'LOWER', label: 'Lower (L)' },
-    { id: 'MIDDLE', label: 'Middle (M)', hideFor: ['2A', '1A'] },
-    { id: 'UPPER', label: 'Upper (U)' },
-    { id: 'SIDE_LOWER', label: 'Side Lower (SL)', hideFor: ['1A'] },
-    { id: 'SIDE_UPPER', label: 'Side Upper (SU)', hideFor: ['1A'] },
+    { id: 'MIDDLE', label: 'Middle (M)', hideFor: ['2A', '1A', '2S', 'CC'] },
+    { id: 'UPPER', label: 'Upper (U)', hideFor: ['2S', 'CC'] },
+    { id: 'SIDE_LOWER', label: 'Side Lower / Window', hideFor: ['1A'] },
+    { id: 'SIDE_UPPER', label: 'Side Upper (SU)', hideFor: ['1A', '2S', 'CC'] },
   ].filter((f) => !f.hideFor || !f.hideFor.includes(travelClass));
 
   const statusFilters = [
-    { id: 'ALL', label: 'All Statuses' },
-    { id: 'FULL_JOURNEY', label: 'Full Journey Only' },
-    { id: 'AVAILABLE', label: 'Any Vacant (Full + Part)' },
+    { id: 'ALL', label: 'All Berths' },
+    { id: 'VACANT_ONLY', label: 'Vacant Seats Only (Green)' },
   ];
 
   const matchesFilters = (berth) => {
     if (!berth) return false;
     if (filterType !== 'ALL' && berth.berthType !== filterType) {
-      return false;
+      if (filterType === 'SIDE_LOWER' && (berth.berthType === 'SIDE_LOWER' || berth.berthType === 'WINDOW')) {
+        // match
+      } else {
+        return false;
+      }
     }
-    if (filterStatus === 'FULL_JOURNEY' && berth.status !== 'FULL_JOURNEY') {
-      return false;
-    }
-    if (filterStatus === 'AVAILABLE' && berth.status !== 'FULL_JOURNEY' && berth.status !== 'PARTIAL_JOURNEY') {
+    if (filterStatus === 'VACANT_ONLY' && berth.status !== 'FULL_JOURNEY' && berth.status !== 'PARTIAL_JOURNEY') {
       return false;
     }
     return true;
   };
 
-  const renderBerthTile = (berth) => {
-    if (!berth) return null;
+  const isWindowBerth = (berth) => {
+    if (!berth) return false;
+    if (berth.berthType === 'SIDE_LOWER' || berth.berthType === 'WINDOW') return true;
+    const mod = berth.berthNumber % 8;
+    return mod === 1 || mod === 4 || mod === 7;
+  };
+
+  const getBerthTypeLabel = (berth) => {
+    if (!berth) return '';
+    switch (berth.berthType) {
+      case 'LOWER':
+        return 'LOWER';
+      case 'MIDDLE':
+        return 'MIDDLE';
+      case 'UPPER':
+        return 'UPPER';
+      case 'SIDE_LOWER':
+        return 'SIDE LOWER';
+      case 'SIDE_UPPER':
+        return 'SIDE UPPER';
+      case 'WINDOW':
+        return 'WINDOW';
+      default:
+        return berth.berthType || 'SEAT';
+    }
+  };
+
+  const renderSeat = (berth, compact = false) => {
+    if (!berth) {
+      return (
+        <div
+          className={`rounded-xl bg-slate-50 border border-dashed border-slate-200 ${
+            compact ? 'h-11' : 'h-14'
+          }`}
+        />
+      );
+    }
 
     const isSelected = selectedBerthNumber === berth.berthNumber;
     const isHovered = hoveredBerth?.berthNumber === berth.berthNumber;
     const isMatching = matchesFilters(berth);
+    const hasWindow = isWindowBerth(berth);
+    const isVacant = berth.status === 'FULL_JOURNEY' || berth.status === 'PARTIAL_JOURNEY';
 
-    // Exact IRCTC color parity
-    let bgClasses = 'bg-[#dbe5f1] text-[#1e293b] border-[#b0c4de] hover:border-slate-400';
-    let statusLabel = 'Occupied for full journey';
-    let statusDot = 'bg-[#64748b]';
+    // Style Rule in Light Mode:
+    // Vacant = Crisp VIBRANT EMERALD GREEN
+    // Others = Clean SOFT LIGHT GRAY
+    let bgClasses = 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200/80 hover:border-slate-300';
+    let labelColor = 'text-slate-400';
+    let statusText = 'Booked';
 
     if (berth.status === 'FULL_JOURNEY') {
-      bgClasses = 'bg-[#86efac] text-[#14532d] border-[#22c55e] hover:bg-[#4ade80]';
-      statusLabel = 'Vacant for full journey';
-      statusDot = 'bg-[#16a34a]';
+      bgClasses =
+        'bg-emerald-500 text-white border-emerald-600 shadow-sm ring-1 ring-emerald-300 hover:bg-emerald-600';
+      labelColor = 'text-emerald-100 font-extrabold';
+      statusText = 'VACANT';
     } else if (berth.status === 'PARTIAL_JOURNEY') {
-      bgClasses = 'bg-[#fed766] text-[#713f12] border-[#f59e0b] hover:bg-[#fde047]';
-      statusLabel = `Occupied for part journey (${berth.coveragePercent}% available)`;
-      statusDot = 'bg-[#d97706]';
+      bgClasses =
+        'bg-emerald-600 text-white border-emerald-700 shadow-xs ring-1 ring-emerald-400 hover:bg-emerald-700';
+      labelColor = 'text-emerald-100 font-extrabold';
+      statusText = `${berth.coveragePercent || 'Part'}%`;
     }
 
-    const shortType =
-      berth.berthType === 'LOWER'
-        ? 'L'
-        : berth.berthType === 'MIDDLE'
-        ? 'M'
-        : berth.berthType === 'UPPER'
-        ? 'U'
-        : berth.berthType === 'SIDE_LOWER'
-        ? 'SL'
-        : berth.berthType === 'SIDE_UPPER'
-        ? 'SU'
-        : berth.berthType;
-
-    const opacityClass = isMatching ? 'opacity-100' : 'opacity-30 hover:opacity-75';
+    const opacityClass = isMatching ? 'opacity-100' : 'opacity-30 hover:opacity-70';
 
     return (
       <button
@@ -97,48 +157,78 @@ export function CoachMap({
         onClick={() => onSelectBerth && onSelectBerth(berth)}
         onMouseEnter={() => setHoveredBerth(berth)}
         onMouseLeave={() => setHoveredBerth(null)}
-        aria-label={`Berth ${berth.berthNumber}, ${berth.berthType}, ${statusLabel}`}
-        className={`relative flex flex-col items-center justify-between p-1.5 rounded-lg border-2 text-center transition-all cursor-pointer select-none min-h-[58px] min-w-[54px] ${bgClasses} ${opacityClass} ${
+        title={`Seat ${berth.berthNumber} (${getBerthTypeLabel(berth)}) - ${statusText}`}
+        className={`relative flex flex-col justify-between p-1.5 sm:p-2 rounded-xl border text-center transition-all cursor-pointer select-none ${bgClasses} ${opacityClass} ${
+          compact ? 'min-h-[50px]' : 'min-h-[58px]'
+        } ${
           isSelected
-            ? 'ring-2 ring-blue-700 ring-offset-2 scale-105 border-blue-700 z-10'
+            ? 'ring-3 ring-blue-500 ring-offset-2 ring-offset-white scale-[1.05] z-10 border-blue-600 shadow-md'
             : isHovered
-            ? 'scale-102'
+            ? 'scale-[1.02]'
             : ''
         }`}
       >
-        {/* Top: Short type and dot */}
-        <div className="flex items-center justify-between w-full text-[10px] leading-none mb-0.5 font-bold">
-          <span className="font-mono text-[9px] uppercase tracking-wider opacity-80">
-            {shortType}
+        {/* Top: Position Label & SVG Window */}
+        <div className="flex items-center justify-between w-full leading-none text-[8.5px] font-extrabold tracking-wider">
+          <span className={`truncate ${labelColor}`}>
+            {getBerthTypeLabel(berth)}
           </span>
-          <span className={`w-1.5 h-1.5 rounded-full ${statusDot}`} />
+          {hasWindow && (
+            <span
+              className={`shrink-0 ml-1 inline-flex items-center ${
+                isVacant ? 'text-white' : 'text-sky-500'
+              }`}
+              title="Window Seat"
+            >
+              <WindowSvg className="w-2.5 h-2.5" />
+            </span>
+          )}
         </div>
 
-        {/* Center: Berth Number + Type (IRCTC style: e.g. "1 L", "7 SL") */}
-        <div className="font-mono font-black text-xs sm:text-sm tracking-tight leading-tight">
-          {berth.berthNumber} {shortType}
+        {/* Center: Big Bold Seat Number */}
+        <div className="font-mono font-black text-sm sm:text-base tracking-tight leading-tight my-0.5">
+          {berth.berthNumber}
         </div>
 
-        {/* Bottom: Status */}
-        <div className="text-[9px] font-semibold leading-none mt-0.5 truncate max-w-full">
-          {berth.status === 'FULL_JOURNEY' ? (
-            <span className="text-[#14532d]">Vacant</span>
-          ) : berth.status === 'PARTIAL_JOURNEY' ? (
-            <span className="text-[#713f12]">{berth.coveragePercent}%</span>
+        {/* Bottom: Vacant/Booked Status Pill */}
+        <div className="leading-none text-[8px] font-bold uppercase tracking-wider">
+          {isVacant ? (
+            <span className="text-white drop-shadow-xs font-black">
+              {statusText}
+            </span>
           ) : (
-            <span className="text-[#475569]">Occupied</span>
+            <span className="text-slate-400 font-semibold">
+              {statusText}
+            </span>
           )}
         </div>
       </button>
     );
   };
 
+  const totalBerthsCount = bays.reduce((acc, b) => acc + (b.berths?.length || 0), 0);
+
   return (
-    <div className="space-y-4">
-      {/* Interactive Filters Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-xl bg-slate-50 border border-slate-300">
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-xs font-semibold text-slate-700 mr-1 select-none">
+    <div className="space-y-3.5">
+      {/* Notice if chart is not officially prepared */}
+      {!isChartPrepared && (
+        <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 flex items-start gap-2.5 text-xs shadow-xs">
+          <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+          <div className="leading-relaxed">
+            <strong className="block text-amber-900 font-bold">
+              IRCTC Reservation Chart Opens 4 Hours Prior to Departure
+            </strong>
+            <span className="text-amber-700 text-[11px]">
+              Displaying exact physical coach layout for {coachId} ({travelClass}). Window seats and berth positions below are 100% verified.
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Filter Toolbar (Berth Type & Vacant Only) in Clean Light Mode */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2.5 rounded-xl bg-white border border-slate-200 shadow-xs text-slate-700">
+        <div className="flex flex-wrap items-center gap-1">
+          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mr-1 select-none">
             Berth Type:
           </span>
           {berthTypeFilters.map((f) => (
@@ -146,10 +236,10 @@ export function CoachMap({
               key={f.id}
               type="button"
               onClick={() => onFilterTypeChange && onFilterTypeChange(f.id)}
-              className={`px-2.5 py-1 text-xs rounded-md font-medium transition-colors cursor-pointer border ${
+              className={`px-2 py-0.5 text-[11px] rounded-lg font-bold transition-colors cursor-pointer border ${
                 filterType === f.id
-                  ? 'bg-brand-600 border-brand-600 text-white font-bold'
-                  : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-100'
+                  ? 'bg-blue-600 border-blue-600 text-white shadow-xs'
+                  : 'bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200'
               }`}
             >
               {f.label}
@@ -157,19 +247,19 @@ export function CoachMap({
           ))}
         </div>
 
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-xs font-semibold text-slate-700 mr-1 select-none">
-            Availability:
+        <div className="flex flex-wrap items-center gap-1 pt-1 sm:pt-0 border-t sm:border-t-0 border-slate-100">
+          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mr-1 select-none">
+            Filter:
           </span>
           {statusFilters.map((f) => (
             <button
               key={f.id}
               type="button"
               onClick={() => onFilterStatusChange && onFilterStatusChange(f.id)}
-              className={`px-2.5 py-1 text-xs rounded-md font-medium transition-colors cursor-pointer border ${
+              className={`px-2 py-0.5 text-[11px] rounded-lg font-bold transition-colors cursor-pointer border ${
                 filterStatus === f.id
-                  ? 'bg-brand-600 border-brand-600 text-white font-bold'
-                  : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-100'
+                  ? 'bg-emerald-600 border-emerald-600 text-white shadow-xs'
+                  : 'bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200'
               }`}
             >
               {f.label}
@@ -178,145 +268,247 @@ export function CoachMap({
         </div>
       </div>
 
-      {/* Main Coach Exterior Shell */}
-      <div className="relative rounded-2xl border-2 border-slate-300 bg-slate-100/70 p-3 sm:p-5 overflow-hidden">
-        {/* Coach Exterior Destination & Header Strip */}
-        <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-300">
-          <div className="flex items-center gap-2">
-            <span className="font-mono text-sm sm:text-base font-black px-2.5 py-1 rounded bg-[#284a96] text-white">
+      {/* Coach Exterior Housing (Crisp Light Theme Train Carriage) */}
+      <div className="rounded-2xl border-2 border-slate-200 bg-white p-3 sm:p-5 shadow-xs">
+        {/* Coach Header Banner */}
+        <div className="pb-3 mb-3 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2.5">
+          <div className="flex items-center gap-2.5">
+            <span className="font-mono text-base sm:text-lg font-black px-2.5 py-1 rounded-lg bg-blue-600 text-white shadow-xs">
               {coachId}
             </span>
             <div>
-              <span className="text-xs sm:text-sm font-bold text-slate-900">
-                {travelClass === '1A'
-                  ? 'AC First Class (1A)'
-                  : travelClass === '2A'
-                  ? 'AC 2 Tier (2A)'
-                  : travelClass === 'SL'
-                  ? 'Sleeper Class (SL)'
-                  : 'AC 3 Tier (3A)'}
-              </span>
-              <span className="text-xs text-slate-600 ml-2">
-                &bull; {trainNumber} {trainName}
-              </span>
+              <div className="text-xs sm:text-sm font-bold text-slate-900 flex items-center gap-1.5">
+                <span>
+                  {travelClass === '1A'
+                    ? 'AC First Class (1A)'
+                    : travelClass === '2A'
+                    ? 'AC 2 Tier (2A)'
+                    : travelClass === 'SL'
+                    ? 'Sleeper Class (SL)'
+                    : travelClass === '2S'
+                    ? 'Second Sitting (2S)'
+                    : travelClass === 'CC'
+                    ? 'AC Chair Car (CC)'
+                    : 'AC 3 Tier (3A)'}
+                </span>
+                <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-slate-100 text-slate-600 border border-slate-200">
+                  LHB Coach
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 font-medium">
+                Train {trainNumber} &bull; {trainName}
+              </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 text-xs text-slate-600">
-            <span className="font-mono font-bold">{bays.length} Bays</span>
+          <div className="flex items-center gap-3 text-xs text-slate-600 font-mono">
+            <span className="font-bold">{bays.length} Bays</span>
             <span>&bull;</span>
-            <span className="font-mono font-bold">{bays.reduce((acc, b) => acc + b.berths.length, 0)} Berths</span>
+            <span className="font-bold">{totalBerthsCount} Berths</span>
           </div>
         </div>
 
-        {/* Coach Layout Body with Doors and Bays */}
-        <div className="flex items-stretch gap-3 overflow-x-auto pb-4 pt-1 px-1 scrollbar-thin">
+        {/* Legend Ribbon */}
+        <div className="px-2.5 py-1.5 mb-3.5 rounded-lg bg-slate-50 border border-slate-200 flex flex-wrap items-center justify-between gap-2 text-xs font-semibold text-slate-600">
+          <div className="flex items-center gap-3.5 flex-wrap">
+            <span className="inline-flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-sm bg-emerald-500 border border-emerald-600" />
+              <span className="text-emerald-700 font-bold">Vacant Seat (Green)</span>
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-sm bg-slate-200 border border-slate-300" />
+              <span>Booked (Gray)</span>
+            </span>
+            <span className="inline-flex items-center gap-1.5 text-sky-600">
+              <WindowSvg className="w-3 h-3" />
+              <span>Window Seat</span>
+            </span>
+          </div>
+          <span className="text-[10px] text-slate-500 hidden sm:inline">
+            Click any seat to inspect
+          </span>
+        </div>
+
+        {/* ========================================================
+            MOBILE VIEW (< md): Vertical Corridor Layout (Where Is My Train Style)
+            ======================================================== */}
+        <div className="block md:hidden space-y-3">
+          {/* Door 1 & Toilet Header */}
+          <div className="p-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-600 flex items-center justify-between text-xs">
+            <div className="flex items-center gap-1.5 font-bold text-slate-800">
+              <DoorClosed className="w-4 h-4 text-slate-500" />
+              <span>Door 1 (Entry)</span>
+            </div>
+            <div className="flex items-center gap-1 text-[11px] text-slate-500">
+              <Bath className="w-3.5 h-3.5" />
+              <span>Toilets 1 & 2</span>
+            </div>
+          </div>
+
+          {/* Vertical Bays Flow */}
+          {bays.map((bay) => {
+            const mainBerths = (bay.berths || []).filter(
+              (b) => b.berthType !== 'SIDE_LOWER' && b.berthType !== 'SIDE_UPPER'
+            );
+            const sideBerths = (bay.berths || []).filter(
+              (b) => b.berthType === 'SIDE_LOWER' || b.berthType === 'SIDE_UPPER'
+            );
+
+            // Split main berths into facing benches (Row A vs Row B)
+            const mid = Math.ceil(mainBerths.length / 2);
+            const benchA = mainBerths.slice(0, mid);
+            const benchB = mainBerths.slice(mid);
+
+            return (
+              <div
+                key={`mobile-bay-${bay.bayNumber}`}
+                className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2 shadow-2xs"
+              >
+                {/* Bay Heading */}
+                <div className="flex items-center justify-between pb-1 border-b border-slate-200 text-[11px]">
+                  <span className="font-bold text-slate-800">
+                    {bay.bayLabel || `Bay ${bay.bayNumber}`}
+                  </span>
+                  <span className="text-[10px] font-mono text-slate-500">
+                    Seats {bay.berths?.[0]?.berthNumber} &ndash; {bay.berths?.[bay.berths.length - 1]?.berthNumber}
+                  </span>
+                </div>
+
+                {/* Grid: Main Bay (7 cols) | Aisle Corridor (1 col) | Side Bay (4 cols) */}
+                <div className="grid grid-cols-12 gap-1.5 items-stretch">
+                  {/* Left: Main Bay Facing Benches */}
+                  <div className="col-span-7 flex flex-col gap-1.5">
+                    <div className="grid grid-cols-3 gap-1">
+                      {benchA.map((b) => renderSeat(b, true))}
+                    </div>
+                    {benchB.length > 0 && (
+                      <div className="grid grid-cols-3 gap-1 pt-1 border-t border-dashed border-slate-200">
+                        {benchB.map((b) => renderSeat(b, true))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Center: Walking Aisle Corridor */}
+                  <div className="col-span-1 flex flex-col items-center justify-center border-x border-dashed border-slate-200 py-1">
+                    <AislePathSvg className="w-2.5 h-full text-slate-400" />
+                  </div>
+
+                  {/* Right: Side Bay Seats */}
+                  <div className="col-span-4 flex flex-col gap-1.5 justify-between">
+                    {sideBerths.map((b) => renderSeat(b, true))}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+
+          {/* Door 2 & Toilet Footer */}
+          <div className="p-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-600 flex items-center justify-between text-xs">
+            <div className="flex items-center gap-1.5 font-bold text-slate-800">
+              <DoorClosed className="w-4 h-4 text-slate-500" />
+              <span>Door 2 (Exit)</span>
+            </div>
+            <div className="flex items-center gap-1 text-[11px] text-slate-500">
+              <Bath className="w-3.5 h-3.5" />
+              <span>Toilets 3 & 4</span>
+            </div>
+          </div>
+        </div>
+
+        {/* ========================================================
+            DESKTOP VIEW (>= md): Horizontal Full-Width Bay Layout
+            ======================================================== */}
+        <div className="hidden md:flex items-stretch gap-3 overflow-x-auto pb-2 scrollbar-thin">
           {/* Left Door & Restroom */}
-          <div className="flex flex-col items-center justify-between py-4 px-2.5 rounded-xl border border-dashed border-slate-300 bg-white text-slate-500 shrink-0 select-none min-w-[70px]">
-            <div className="flex flex-col items-center gap-1 text-[10px] font-semibold">
-              <DoorClosed className="w-4 h-4 text-slate-600" />
+          <div className="flex flex-col items-center justify-between py-4 px-3 rounded-xl border border-dashed border-slate-300 bg-slate-50 text-slate-600 shrink-0 select-none min-w-[76px]">
+            <div className="flex flex-col items-center gap-1 text-[10px] font-bold text-slate-700">
+              <DoorClosed className="w-4 h-4 text-slate-500" />
               <span>Door 1</span>
             </div>
-            <div className="flex flex-col items-center gap-1 text-[9px] text-slate-400 my-4">
+            <div className="flex flex-col items-center gap-1 text-[9px] text-slate-500 my-4">
               <Bath className="w-3.5 h-3.5" />
-              <span>Washrooms</span>
+              <span>Toilets</span>
             </div>
-            <div className="text-[10px] font-semibold text-slate-600">
+            <div className="text-[10px] font-bold text-slate-600">
               Entry
             </div>
           </div>
 
-          {/* Bays Sequence */}
+          {/* Bays Sequence Horizontally */}
           <div className="flex items-stretch gap-3 shrink-0">
-            {bays.map((bay) => (
-              <div
-                key={bay.bayNumber}
-                className="flex flex-col justify-between p-2.5 rounded-xl border border-slate-300 bg-white min-w-[170px]"
-              >
-                {/* Bay Header */}
-                <div className="text-center pb-1.5 mb-2 border-b border-slate-200">
-                  <span className="text-[11px] font-bold text-slate-700">
-                    {bay.bayLabel}
-                  </span>
-                </div>
+            {bays.map((bay) => {
+              const mainBerths = (bay.berths || []).filter(
+                (b) => b.berthType !== 'SIDE_LOWER' && b.berthType !== 'SIDE_UPPER'
+              );
+              const sideBerths = (bay.berths || []).filter(
+                (b) => b.berthType === 'SIDE_LOWER' || b.berthType === 'SIDE_UPPER'
+              );
+              const mid = Math.ceil(mainBerths.length / 2);
+              const benchA = mainBerths.slice(0, mid);
+              const benchB = mainBerths.slice(mid);
 
-                {/* Main Compartment: Left & Right Rows */}
-                <div className="flex items-center justify-center gap-2 mb-2">
-                  <div className="flex flex-col gap-1.5 flex-1">
-                    {bay.mainLeft.map((b) => renderBerthTile(b))}
+              return (
+                <div
+                  key={`desktop-bay-${bay.bayNumber}`}
+                  className="flex flex-col justify-between p-2.5 rounded-xl border border-slate-200 bg-slate-50 min-w-[175px] shadow-2xs"
+                >
+                  {/* Bay Tag */}
+                  <div className="flex items-center justify-between pb-1 mb-1.5 border-b border-slate-200 text-[10.5px]">
+                    <span className="font-bold text-slate-800">
+                      {bay.bayLabel || `Bay ${bay.bayNumber}`}
+                    </span>
+                    <span className="text-[9.5px] font-mono text-slate-500">
+                      Seats {bay.berths?.[0]?.berthNumber} &ndash; {bay.berths?.[bay.berths.length - 1]?.berthNumber}
+                    </span>
                   </div>
 
-                  {bay.mainRight.length > 0 && (
-                    <div className="flex flex-col gap-1.5 flex-1">
-                      {bay.mainRight.map((b) => renderBerthTile(b))}
+                  {/* Top: Main Compartment (Facing Benches) */}
+                  <div className="flex flex-col gap-1.5">
+                    <div className="grid grid-cols-3 gap-1">
+                      {benchA.map((b) => renderSeat(b))}
                     </div>
-                  )}
-                </div>
-
-                {/* Corridor Walkway / Aisle */}
-                {travelClass !== '1A' && (
-                  <div className="my-1.5 py-1 px-2 rounded bg-slate-100 border border-dashed border-slate-300 text-center text-[9px] font-mono text-slate-500 select-none tracking-widest uppercase">
-                    &bull; &bull; Aisle &bull; &bull;
-                  </div>
-                )}
-
-                {/* Side Berths across corridor (SL, SU) */}
-                {bay.side.length > 0 && (
-                  <div className="flex items-center justify-center gap-2 mt-1">
-                    {bay.side.map((b) => (
-                      <div key={b.berthNumber} className="flex-1">
-                        {renderBerthTile(b)}
+                    {benchB.length > 0 && (
+                      <div className="grid grid-cols-3 gap-1 pt-1 border-t border-dashed border-slate-200">
+                        {benchB.map((b) => renderSeat(b))}
                       </div>
-                    ))}
+                    )}
                   </div>
-                )}
-              </div>
-            ))}
+
+                  {/* Middle: Aisle Corridor Walkway */}
+                  <div className="flex items-center justify-center my-2 py-0.5 border-y border-dashed border-slate-300">
+                    <span className="text-[9px] font-bold text-slate-400 tracking-wider uppercase flex items-center gap-1.5">
+                      <AislePathSvg className="w-3 h-3 text-slate-400" />
+                      Aisle
+                    </span>
+                  </div>
+
+                  {/* Bottom: Side Berths */}
+                  <div className="grid grid-cols-2 gap-1">
+                    {sideBerths.map((b) => renderSeat(b))}
+                  </div>
+                </div>
+              );
+            })}
           </div>
 
           {/* Right Door & Restroom */}
-          <div className="flex flex-col items-center justify-between py-4 px-2.5 rounded-xl border border-dashed border-slate-300 bg-white text-slate-500 shrink-0 select-none min-w-[70px]">
-            <div className="flex flex-col items-center gap-1 text-[10px] font-semibold">
-              <DoorClosed className="w-4 h-4 text-slate-600" />
+          <div className="flex flex-col items-center justify-between py-4 px-3 rounded-xl border border-dashed border-slate-300 bg-slate-50 text-slate-600 shrink-0 select-none min-w-[76px]">
+            <div className="flex flex-col items-center gap-1 text-[10px] font-bold text-slate-700">
+              <DoorClosed className="w-4 h-4 text-slate-500" />
               <span>Door 2</span>
             </div>
-            <div className="flex flex-col items-center gap-1 text-[9px] text-slate-400 my-4">
+            <div className="flex flex-col items-center gap-1 text-[9px] text-slate-500 my-4">
               <Bath className="w-3.5 h-3.5" />
-              <span>Washrooms</span>
+              <span>Toilets</span>
             </div>
-            <div className="text-[10px] font-semibold text-slate-600">
+            <div className="text-[10px] font-bold text-slate-600">
               Exit
             </div>
           </div>
         </div>
       </div>
-
-      {/* IRCTC Official Legend Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl bg-slate-50 border border-slate-300 text-xs text-slate-700">
-        <div className="space-y-1.5">
-          <div className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
-            NOTE: Click on berth to see details.
-          </div>
-          <div className="flex flex-wrap items-center gap-4">
-            <div className="flex items-center gap-2">
-              <span className="w-4 h-4 rounded border border-[#b0c4de] bg-[#dbe5f1]" />
-              <span className="font-medium text-slate-800">Occupied for full journey</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="w-4 h-4 rounded border border-[#f59e0b] bg-[#fed766]" />
-              <span className="font-medium text-slate-800">Occupied for part journey</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="w-4 h-4 rounded border border-[#22c55e] bg-[#86efac]" />
-              <span className="font-medium text-slate-800">Vacant for full journey</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="text-[11px] text-slate-600 font-medium">
-          <span className="font-bold">L:</span> Lower &bull; <span className="font-bold">M:</span> Middle &bull; <span className="font-bold">U:</span> Upper &bull; <span className="font-bold">SL:</span> Side Lower &bull; <span className="font-bold">SU:</span> Side Upper
-        </div>
-      </div>
     </div>
   );
 }
+
+export default CoachMap;

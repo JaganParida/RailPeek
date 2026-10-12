@@ -17,7 +17,11 @@ coachRouter.get('/:trainNumber', trainSearchLimiter, async (req, res, next) => {
       throw new ApiError('MISSING_PARAMETER', 'Train number is required', 400);
     }
 
-    const summary = await getTrainCoachesSummary(trainNumber);
+    const summary = await getTrainCoachesSummary(trainNumber, {
+      from: req.query.from,
+      to: req.query.to,
+      date: req.query.date,
+    });
     return res.json(successResponse(summary));
   } catch (err) {
     next(err);
