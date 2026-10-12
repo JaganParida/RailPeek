@@ -198,6 +198,12 @@ export async function getCoachVacancy({
     journey = resolveJourneySegment(route, fromStation, toStation);
   }
 
+  if (!journey.valid) {
+    fromStation = route[0].stationCode;
+    toStation = route[route.length - 1].stationCode;
+    journey = resolveJourneySegment(route, fromStation, toStation);
+  }
+
   const cacheKey = getCoachVacancyCacheKey({
     trainNumber: normTrain,
     coachId: normCoach,

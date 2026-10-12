@@ -8,9 +8,10 @@ export const coachRouter = Router();
 
 /**
  * GET /api/v1/coaches/:trainNumber
+ * GET /api/v1/coaches/:trainNumber/summary
  * Get available coaches and train details
  */
-coachRouter.get('/:trainNumber', trainSearchLimiter, async (req, res, next) => {
+coachRouter.get(['/:trainNumber', '/:trainNumber/summary'], trainSearchLimiter, async (req, res, next) => {
   try {
     const { trainNumber } = req.params;
     if (!trainNumber) {
