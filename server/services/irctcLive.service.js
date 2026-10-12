@@ -51,6 +51,22 @@ const IRCTC_HEADERS = {
   'Origin': 'https://www.irctc.co.in',
 };
 
+function getIrctcTarget(endpoint) {
+  const bridgeUrl = process.env.IRCTC_BRIDGE_URL;
+  if (bridgeUrl) {
+    return `${bridgeUrl.replace(/\/$/, '')}/api/irctc/${endpoint}`;
+  }
+  return `https://www.irctc.co.in/online-charts/api/${endpoint}`;
+}
+
+function getIrctcHeaders() {
+  const headers = { ...IRCTC_HEADERS };
+  if (process.env.IRCTC_BRIDGE_TOKEN) {
+    headers['x-bridge-token'] = process.env.IRCTC_BRIDGE_TOKEN;
+  }
+  return headers;
+}
+
 /**
  * Fetch Live Train Composition & Chart Metadata from IRCTC
  * Deduplicated via SingleFlight & protected against 429 rate limits.
@@ -77,13 +93,14 @@ export async function fetchLiveTrainComposition(trainNo, jDate, boardingStation)
     const existing = getCached(cacheKey);
     if (existing) return existing;
 
+    const timeoutMs = process.env.IRCTC_BRIDGE_URL ? 10000 : 5000;
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
-      const res = await fetch('https://www.irctc.co.in/online-charts/api/trainComposition', {
+      const res = await fetch(getIrctcTarget('trainComposition'), {
         method: 'POST',
-        headers: IRCTC_HEADERS,
+        headers: getIrctcHeaders(),
         body: JSON.stringify({
           trainNo: String(trainNo).trim(),
           jDate: String(jDate).trim(),
@@ -184,13 +201,14 @@ export async function fetchLiveCoachComposition({
     const existing = getCached(cacheKey);
     if (existing) return existing;
 
+    const timeoutMs = process.env.IRCTC_BRIDGE_URL ? 10000 : 5000;
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
-      const res = await fetch('https://www.irctc.co.in/online-charts/api/coachComposition', {
+      const res = await fetch(getIrctcTarget('coachComposition'), {
         method: 'POST',
-        headers: IRCTC_HEADERS,
+        headers: getIrctcHeaders(),
         body: JSON.stringify({
           trainNo: String(trainNo).trim(),
           jDate: String(jDate).trim(),
@@ -265,13 +283,14 @@ export async function fetchLiveVacantBerths({
     const existing = getCached(cacheKey);
     if (existing) return existing;
 
+    const timeoutMs = process.env.IRCTC_BRIDGE_URL ? 10000 : 5000;
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
-      const res = await fetch('https://www.irctc.co.in/online-charts/api/vacantBerth', {
+      const res = await fetch(getIrctcTarget('vacantBerth'), {
         method: 'POST',
-        headers: IRCTC_HEADERS,
+        headers: getIrctcHeaders(),
         body: JSON.stringify({
           trainNo: String(trainNo).trim(),
           jDate: String(jDate).trim(),
