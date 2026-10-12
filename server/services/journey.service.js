@@ -987,7 +987,13 @@ export async function findUsableBerths(params) {
     }
     const cDesc = firstResult?.chartDescription || '';
 
-    const activeClassResult = trainResults.find((r) => r.travelClass === travelClass) || trainResults[0];
+    const matchedClassResult = trainResults.find((r) => r.travelClass === travelClass);
+    const hasTrainSearchedClass = Boolean(matchedClassResult);
+    const activeClassResult = matchedClassResult ||
+      trainResults.find((r) => Array.isArray(r.berths) && r.berths.length > 0) ||
+      trainResults[0];
+
+    const effectiveTravelClass = activeClassResult?.travelClass || travelClass;
     const availableBerths = activeClassResult ? sortBerthsByDesirability(activeClassResult.berths || []) : [];
     const firstBerth = availableBerths[0];
     const topCoverageStatus = firstBerth?.status || (firstBerth ? (firstBerth.coveragePercent === 100 ? 'FULL_JOURNEY' : 'PARTIAL_JOURNEY') : 'UNAVAILABLE');
@@ -1004,7 +1010,9 @@ export async function findUsableBerths(params) {
       durationFormatted: formatDuration(durationMinutes),
       distanceKm: train.distanceKm || 0,
       classes: train.classes || [],
-      travelClass,
+      travelClass: effectiveTravelClass,
+      searchedClass: travelClass,
+      hasTrainSearchedClass,
       classSummaries,
       availableBerths,
       totalVacantCount: availableBerths.length,

@@ -13,6 +13,7 @@ export function TrainAccordionCard({
   fromStation,
   toStation,
   selectedClass,
+  onSelectClass,
 }) {
   const [liveBrowserComp, setLiveBrowserComp] = useState(null);
 
@@ -95,6 +96,12 @@ export function TrainAccordionCard({
   const hasVacancies = totalVacantCount > 0 && !isDeparted;
   const isFullJourney = coverageStatus === 'FULL_JOURNEY' || fullJourneyCount > 0;
   const currentClass = train.travelClass || selectedClass || '3A';
+  const trainClasses = train.classes || [];
+  const trainOffersSearchedClass = trainClasses.length === 0 || !selectedClass || trainClasses.includes(selectedClass);
+
+  const availableAltClasses = (train.classSummaries || [])
+    .filter((c) => c.travelClass !== currentClass && c.availableBerthsCount > 0)
+    .sort((a, b) => b.availableBerthsCount - a.availableBerthsCount);
 
   // Accurate origin & destination handling (e.g. ANVT vs NDLS)
   const trainOrigin = train.fromStation || train.origin || fromStation;
@@ -166,8 +173,15 @@ export function TrainAccordionCard({
             <h3 className="text-sm sm:text-base font-bold text-slate-900 truncate">
               {trainName}
             </h3>
-            <span className="text-[10px] sm:text-xs font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-300">
-              {currentClass}
+            <span
+              className={`text-[10px] sm:text-xs font-bold px-1.5 py-0.5 rounded border ${
+                !trainOffersSearchedClass && selectedClass
+                  ? 'bg-amber-50 text-amber-900 border-amber-300'
+                  : 'bg-slate-100 text-slate-700 border border-slate-300'
+              }`}
+              title={!trainOffersSearchedClass ? `Train coaches: ${trainClasses.join(', ')}` : undefined}
+            >
+              {!trainOffersSearchedClass && trainClasses.length > 0 ? trainClasses.join('/') : currentClass}
             </span>
             {isBestMatch && (
               <span className="text-[10px] font-extrabold px-2 py-0.5 rounded bg-blue-100 text-blue-900 border border-blue-200 inline-flex items-center gap-1 shrink-0">
@@ -201,6 +215,27 @@ export function TrainAccordionCard({
                   <span>0 Direct • {totalVacantCount} Segment Seats</span>
                 </span>
               )
+            ) : availableAltClasses.length > 0 ? (
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-300">
+                  {!trainOffersSearchedClass ? `No ${selectedClass}` : `0 in ${currentClass}`}
+                </span>
+                {availableAltClasses.slice(0, 2).map((alt) => (
+                  <button
+                    key={alt.travelClass}
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onSelectClass?.(alt.travelClass);
+                    }}
+                    className="text-xs font-bold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-300 hover:bg-emerald-100 transition-colors inline-flex items-center gap-1 cursor-pointer"
+                    title={`Click to switch to ${alt.travelClass}`}
+                  >
+                    <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                    <span>{alt.availableBerthsCount} in {alt.travelClass}</span>
+                  </button>
+                ))}
+              </div>
             ) : isChartActuallyPrepared ? (
               <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-300">
                 Chart Prepared • 0 Vacant

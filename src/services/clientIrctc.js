@@ -78,3 +78,70 @@ export async function fetchBrowserTrainComposition(trainNo, jDate, boardingStati
     clearTimeout(timeoutId);
   }
 }
+
+/**
+ * Fetch Live Vacant Berths directly from IRCTC via client browser
+ * @param {Object} params
+ * @param {string} params.trainNo
+ * @param {string} params.jDate
+ * @param {string} params.boardingStation
+ * @param {string} [params.remoteStation]
+ * @param {string} [params.trainSourceStation]
+ * @param {string} params.cls
+ * @param {number} [params.chartType=1]
+ * @returns {Promise<Array|null>}
+ */
+export async function fetchBrowserVacantBerths({
+  trainNo,
+  jDate,
+  boardingStation,
+  remoteStation,
+  trainSourceStation,
+  cls,
+  chartType = 1,
+}) {
+  if (typeof window === 'undefined') return null;
+  if (!trainNo || !jDate || !boardingStation || !cls) return null;
+
+  const key = `vacant:${trainNo}:${jDate}:${boardingStation}:${cls}:${chartType}`;
+  if (clientCache.has(key)) {
+    const item = clientCache.get(key);
+    if (Date.now() - item.ts < 2 * 60 * 1000) {
+      return item.data;
+    }
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 6000);
+
+  try {
+    const res = await fetch('https://www.irctc.co.in/online-charts/api/vacantBerth', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        trainNo: String(trainNo).trim(),
+        jDate: String(jDate).trim(),
+        boardingStation: String(boardingStation).trim().toUpperCase(),
+        remoteStation: String(remoteStation || boardingStation).trim().toUpperCase(),
+        trainSourceStation: String(trainSourceStation || boardingStation).trim().toUpperCase(),
+        cls: String(cls).trim().toUpperCase(),
+        chartType,
+      }),
+      signal: controller.signal,
+    });
+
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data.error || !data.vbd) return null;
+
+    const result = data.vbd || [];
+    clientCache.set(key, { data: result, ts: Date.now() });
+    return result;
+  } catch (_e) {
+    return null;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}

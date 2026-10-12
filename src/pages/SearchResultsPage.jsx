@@ -293,6 +293,37 @@ export function SearchResultsPage() {
   const isTabLoading = isClassChanging || isFetching || isLoading;
   const activeDisplayClass = loadingClass || selectedClass;
 
+  // Calculate aggregate vacancies per class across all upcoming operating route trains
+  const routeClassVacancyTotals = useMemo(() => {
+    const totals = { SL: 0, '3A': 0, '2A': 0, '1A': 0, '2S': 0, CC: 0, '3E': 0 };
+    const upcomingCrossTrains = crossTrains.filter((t) => !t.isDeparted && !t.chartStatus?.includes('DEPARTED'));
+    for (const t of upcomingCrossTrains) {
+      if (Array.isArray(t.classSummaries)) {
+        for (const cs of t.classSummaries) {
+          if (cs.travelClass && typeof cs.availableBerthsCount === 'number') {
+            totals[cs.travelClass] = (totals[cs.travelClass] || 0) + cs.availableBerthsCount;
+          }
+        }
+      }
+    }
+    return totals;
+  }, [crossTrains]);
+
+  const routeAvailableInOtherClasses = useMemo(() => {
+    return Object.entries(routeClassVacancyTotals)
+      .filter(([cls, count]) => cls !== activeDisplayClass && count > 0)
+      .map(([travelClass, totalSeats]) => ({ travelClass, totalSeats }))
+      .sort((a, b) => b.totalSeats - a.totalSeats);
+  }, [routeClassVacancyTotals, activeDisplayClass]);
+
+  const totalUpcomingVacantInSelectedClass = useMemo(() => {
+    return upcomingTrains.reduce((sum, t) => sum + (t.totalVacantCount || 0), 0);
+  }, [upcomingTrains]);
+
+  const totalAltRouteSeats = useMemo(() => {
+    return routeAvailableInOtherClasses.reduce((sum, c) => sum + c.totalSeats, 0);
+  }, [routeAvailableInOtherClasses]);
+
   const handleSelectClass = async (newCls) => {
     if (newCls === selectedClass) return;
     setIsClassChanging(true);
@@ -582,13 +613,14 @@ export function SearchResultsPage() {
                   {['SL', '3A', '2A', '1A', '2S', 'CC'].map((cls) => {
                     const isCurrent = activeDisplayClass === cls;
                     const isThisLoading = isTabLoading && isCurrent;
+                    const count = routeClassVacancyTotals[cls] || 0;
                     return (
                       <button
                         key={cls}
                         type="button"
                         disabled={isTabLoading}
                         onClick={() => handleSelectClass(cls)}
-                        className={`px-2.5 py-1 rounded-md font-bold text-xs transition-all flex items-center gap-1 select-none ${
+                        className={`px-2.5 py-1 rounded-md font-bold text-xs transition-all flex items-center gap-1.5 select-none ${
                           isCurrent
                             ? 'bg-[#1e3a8a] text-white border border-[#1e3a8a]'
                             : 'text-slate-600 hover:text-slate-900 border border-transparent'
@@ -598,6 +630,17 @@ export function SearchResultsPage() {
                           <Loader2 className="w-3 h-3 animate-spin shrink-0 text-white" />
                         )}
                         <span>{cls}</span>
+                        {count > 0 && (
+                          <span
+                            className={`text-[10px] px-1.5 py-0.2 rounded-full font-extrabold ${
+                              isCurrent
+                                ? 'bg-emerald-400 text-slate-950'
+                                : 'bg-emerald-100 text-emerald-800'
+                            }`}
+                          >
+                            {count}
+                          </span>
+                        )}
                       </button>
                     );
                   })}
@@ -779,6 +822,41 @@ export function SearchResultsPage() {
             {/* Active / Upcoming Trains */}
             {upcomingTrains.length > 0 ? (
               <div className="space-y-3.5">
+                {/* Intelligent Cross-Class Route Notice */}
+                {!isLoading && totalUpcomingVacantInSelectedClass === 0 && routeAvailableInOtherClasses.length > 0 && (
+                  <div className="p-3.5 sm:p-4 rounded-xl border border-emerald-300 bg-emerald-50/90 text-slate-800 text-xs flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-xs">
+                    <div className="flex items-start sm:items-center gap-2.5">
+                      <div className="w-7 h-7 rounded-full bg-emerald-100 border border-emerald-400 flex items-center justify-center shrink-0 text-emerald-700 font-bold">
+                        ✓
+                      </div>
+                      <div>
+                        <p className="font-bold text-emerald-950 text-xs sm:text-sm">
+                          No vacant berths in {activeDisplayClass} class today — but {totalAltRouteSeats}+ seats available in other classes!
+                        </p>
+                        <p className="text-slate-600 text-[11px] sm:text-xs mt-0.5">
+                          All {activeDisplayClass} coaches on this route are fully booked. Real seats are available in:
+                          {routeAvailableInOtherClasses.map((c) => ` ${c.totalSeats} in ${c.travelClass}`).join(' • ')}.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                      {routeAvailableInOtherClasses.slice(0, 3).map((c) => (
+                        <button
+                          key={c.travelClass}
+                          type="button"
+                          onClick={() => handleSelectClass(c.travelClass)}
+                          className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs transition-colors cursor-pointer flex items-center gap-1.5"
+                        >
+                          <span>Switch to {c.travelClass}</span>
+                          <span className="bg-emerald-700/80 px-1.5 py-0.2 rounded text-[10px] font-mono">
+                            {c.totalSeats}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 <div className="flex items-center justify-between pb-1 flex-wrap gap-2">
                   <div className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-2">
                     <span>Operating Trains on Route ({upcomingTrains.length})</span>
@@ -801,6 +879,7 @@ export function SearchResultsPage() {
                         fromStation={from}
                         toStation={to}
                         selectedClass={selectedClass}
+                        onSelectClass={(cls) => handleSelectClass(cls)}
                       />
                     );
                   })}
@@ -864,6 +943,7 @@ export function SearchResultsPage() {
                         fromStation={from}
                         toStation={to}
                         selectedClass={selectedClass}
+                        onSelectClass={(cls) => handleSelectClass(cls)}
                       />
                     ))}
                   </div>
