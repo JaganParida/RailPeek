@@ -12,8 +12,8 @@ import {
 } from '../mockData/coaches.mock.js';
 import { MOCK_BERTH_OCCUPANCIES } from '../mockData/availability.mock.js';
 import { ApiError } from '../utils/apiResponse.js';
-import { fetchLiveCoachComposition, fetchLiveTrainComposition } from './irctcLive.service.js';
-import { getTrainRouteStops } from './routeResolver.service.js';
+import { fetchLiveCoachComposition, fetchLiveTrainComposition, fetchLiveVacantBerths } from './irctcLive.service.js';
+import { getTrainRouteStops, resolveJourneyOverlap } from './routeResolver.service.js';
 
 /**
  * Generates deterministic realistic occupancies if coach is not explicitly hardcoded.
@@ -282,23 +282,8 @@ export async function getCoachVacancy({
         occupancies = {};
         const liveBerthsList = [];
 
-        // Match IRCTC passenger coach map parity:
-        // On LHB Sleeper/3A coaches, IRCTC displays commercial passenger berths up to 63
-        // (Bays 1-7: 1..56, Bay 8: 57..63; excluding staff/OBHS berths 64-80).
-        let berthsToProcess = liveCoach.berths;
-        const is63CapTrain = ['12815', '12816', '12875', '12876', '12819', '12820'].includes(normTrain);
-        if (
-          is63CapTrain &&
-          (normCoach.startsWith('S') || normCoach.startsWith('B'))
-        ) {
-          berthsToProcess = liveCoach.berths.filter((b) => Number(b.berthNo) <= 63);
-        } else if (normCoach.startsWith('A')) {
-          berthsToProcess = liveCoach.berths.filter((b) => Number(b.berthNo) <= 54);
-        } else if (normCoach.startsWith('H')) {
-          berthsToProcess = liveCoach.berths.filter((b) => Number(b.berthNo) <= 24);
-        } else if (normCoach.startsWith('S') || normCoach.startsWith('B')) {
-          berthsToProcess = liveCoach.berths.filter((b) => Number(b.berthNo) <= 72);
-        }
+        // Use authentic berths returned by IRCTC for this coach without artificial truncations
+        const berthsToProcess = liveCoach.berths;
 
         for (const b of berthsToProcess) {
           const bNum = Number(b.berthNo);
@@ -327,9 +312,19 @@ export async function getCoachVacancy({
               ? 'SIDE_LOWER'
               : code === 'SU' || code === 'P'
               ? 'SIDE_UPPER'
+              : code === 'WS' || code === 'WINDOW'
+              ? 'WINDOW'
+              : code === 'AS' || code === 'AISLE'
+              ? 'AISLE'
+              : code === 'MS'
+              ? 'MIDDLE'
               : 'LOWER';
 
-          const bayNumber = b.cabinCoupe ? Number(b.cabinCoupe) : Math.ceil(bNum / (normClass === '2A' ? 6 : 8));
+          const bayNumber = b.cabinCoupeNameNo
+            ? Number(b.cabinCoupeNameNo)
+            : b.cabinCoupe
+            ? Number(b.cabinCoupe)
+            : Math.ceil(bNum / (normClass === '2A' ? 6 : 8));
           const isSide = berthType === 'SIDE_LOWER' || berthType === 'SIDE_UPPER';
           const bayType =
             normClass === '1A'
@@ -605,15 +600,18 @@ export async function getTrainCoachesSummary(trainNumber, options = {}) {
 
   const todayStr = date ? date.slice(0, 10) : new Date().toISOString().slice(0, 10);
   const boardingStn = from || routeData?.route?.[0]?.stationCode || 'BBS';
+  const destStn = to || routeData?.route?.[routeData.route.length - 1]?.stationCode || 'DEST';
 
   let liveCoachesList = [];
   let liveTrainName = null;
+  let liveCompData = null;
   let source = 'demo';
   let isDemo = true;
 
   try {
     const liveComp = await fetchLiveTrainComposition(normTrain, todayStr, boardingStn);
     if (liveComp && (liveComp.success || liveComp.coaches || liveComp.trainName)) {
+      liveCompData = liveComp;
       if (liveComp.trainName) liveTrainName = liveComp.trainName;
       if (liveComp.coaches && liveComp.coaches.length > 0) {
         liveCoachesList = liveComp.coaches;
@@ -627,7 +625,6 @@ export async function getTrainCoachesSummary(trainNumber, options = {}) {
     // Composition lookup fallback
   }
 
-
   const standardCoaches = getTrainCoaches(normTrain);
   const availableCoaches = liveCoachesList.length > 0
     ? liveCoachesList.map((c) => c.coachName)
@@ -637,19 +634,89 @@ export async function getTrainCoachesSummary(trainNumber, options = {}) {
 
   const originStn = routeData?.route?.[0]?.stationCode || from || 'ORIGIN';
   const originName = routeData?.route?.[0]?.stationName || from || 'Origin Station';
-  const destStn = routeData?.route?.[routeData.route.length - 1]?.stationCode || to || 'DEST';
+  const destStationCode = routeData?.route?.[routeData.route.length - 1]?.stationCode || to || 'DEST';
   const destName = routeData?.route?.[routeData.route.length - 1]?.stationName || to || 'Destination Station';
+
+  // Calculate live coach vacancy counts across route segments
+  const coachVacancyMap = {};
+  if (from && routeData?.route?.length > 0) {
+    try {
+      const preferredClass = options.travelClass || options.class;
+      const classesToCheck = preferredClass
+        ? Array.from(new Set([preferredClass, 'SL', '3A', '2A', '1A']))
+        : ['SL', '3A', '2A', '1A'];
+
+      const vacantResults = await Promise.allSettled(
+        classesToCheck.map((cls) =>
+          fetchLiveVacantBerths({
+            trainNo: normTrain,
+            jDate: todayStr,
+            boardingStation: boardingStn,
+            remoteStation: liveCompData?.remote || boardingStn,
+            trainSourceStation: liveCompData?.from || originStn,
+            cls,
+          })
+        )
+      );
+
+      for (const res of vacantResults) {
+        if (res.status === 'fulfilled' && res.value?.success && Array.isArray(res.value.vacantBerths)) {
+          for (const vb of res.value.vacantBerths) {
+            const overlap = resolveJourneyOverlap({
+              routeStops: routeData.route,
+              fromCode: boardingStn,
+              toCode: destStn,
+              vbFrom: vb.from,
+              vbTo: vb.to,
+            });
+
+            if (overlap.overlaps) {
+              const bCoach = (vb.coach || vb.coachName || '').toUpperCase().trim();
+              if (bCoach) {
+                coachVacancyMap[bCoach] = (coachVacancyMap[bCoach] || 0) + 1;
+              }
+            }
+          }
+        }
+      }
+    } catch (_err) {
+      // live vacant calculation fallback
+    }
+  }
+
+  const enrichedCoachesData = availableCoaches.map((cName) => {
+    const existing = liveCoachesList.find((c) => c.coachName === cName);
+    const clsCode = existing?.classCode || getCoachClass(cName);
+    const computedVacant = coachVacancyMap[cName];
+    const vacantCount = computedVacant !== undefined
+      ? computedVacant
+      : (existing && existing.vacantBerths !== undefined ? Number(existing.vacantBerths) : 0);
+
+    return {
+      coachName: cName,
+      classCode: clsCode,
+      vacantBerths: vacantCount,
+    };
+  });
+
+  const reqClass = options.travelClass || options.class;
+  let defaultCoach = liveCoachesList[0]?.coachName || availableCoaches[0] || 'B1';
+  if (reqClass) {
+    const matchingClassCoaches = enrichedCoachesData.filter((c) => c.classCode === reqClass);
+    const vacantClassCoach = matchingClassCoaches.find((c) => c.vacantBerths > 0);
+    defaultCoach = vacantClassCoach?.coachName || matchingClassCoaches[0]?.coachName || defaultCoach;
+  }
 
   return {
     trainNumber: normTrain,
     trainName: liveTrainName || routeData?.train?.name || `Train ${normTrain}`,
     classes: routeData?.train?.classes || ['3A', '2A', 'SL', '1A'],
     availableCoaches,
-    coachesData: liveCoachesList,
-    defaultCoach: liveCoachesList[0]?.coachName || availableCoaches[0] || 'B1',
+    coachesData: enrichedCoachesData,
+    defaultCoach,
     origin: originStn,
     originName: originName,
-    destination: destStn,
+    destination: destStationCode,
     destinationName: destName,
     totalStops: routeData?.route?.length || 10,
     source,

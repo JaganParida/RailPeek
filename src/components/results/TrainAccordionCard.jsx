@@ -369,7 +369,9 @@ export function TrainAccordionCard({
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
-                  const targetUrl = `/coach?train=${encodeURIComponent(trainNumber)}&from=${encodeURIComponent(fromStation)}&to=${encodeURIComponent(toStation)}&date=${encodeURIComponent(journeyDate || '')}&class=${encodeURIComponent(currentClass)}`;
+                  const targetCoach = rawBerths?.[0]?.coach || rawBerths?.[0]?.coachId || '';
+                  const coachParam = targetCoach ? `&coach=${encodeURIComponent(targetCoach)}` : '';
+                  const targetUrl = `/coach?train=${encodeURIComponent(trainNumber)}${coachParam}&from=${encodeURIComponent(fromStation)}&to=${encodeURIComponent(toStation)}&date=${encodeURIComponent(journeyDate || '')}&class=${encodeURIComponent(currentClass)}`;
                   navigate(targetUrl);
                 }}
                 className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-xs cursor-pointer ml-auto"
@@ -405,7 +407,9 @@ export function TrainAccordionCard({
               <button
                 type="button"
                 onClick={() => {
-                  const targetUrl = `/coach?train=${encodeURIComponent(trainNumber)}&from=${encodeURIComponent(fromStation)}&to=${encodeURIComponent(toStation)}&date=${encodeURIComponent(journeyDate || '')}&class=${encodeURIComponent(currentClass)}`;
+                  const targetCoach = rawBerths?.[0]?.coach || rawBerths?.[0]?.coachId || '';
+                  const coachParam = targetCoach ? `&coach=${encodeURIComponent(targetCoach)}` : '';
+                  const targetUrl = `/coach?train=${encodeURIComponent(trainNumber)}${coachParam}&from=${encodeURIComponent(fromStation)}&to=${encodeURIComponent(toStation)}&date=${encodeURIComponent(journeyDate || '')}&class=${encodeURIComponent(currentClass)}`;
                   navigate(targetUrl);
                 }}
                 className="px-3 py-1 rounded-md bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center gap-1 shadow-xs cursor-pointer"

@@ -54,7 +54,7 @@ export function ChartPage() {
 
   // Query 1: Discover Route Trains from Search Result
   const routeTrainsQuery = useQuery({
-    queryKey: ['routeTrains', fromStation, toStation, selectedDate],
+    queryKey: ['routeTrains', fromStation, toStation, selectedDate, selectedClass],
     queryFn: async () => {
       if (!fromStation || !toStation) return [];
       const res = await fetch(
@@ -62,7 +62,15 @@ export function ChartPage() {
       );
       if (!res.ok) return [];
       const json = await res.json();
-      return json.data?.trains || [];
+      const trainsList = [];
+      if (Array.isArray(json.data?.crossTrainComparison) && json.data.crossTrainComparison.length > 0) {
+        trainsList.push(...json.data.crossTrainComparison);
+      } else {
+        if (json.data?.bestMatch) trainsList.push(json.data.bestMatch);
+        if (Array.isArray(json.data?.partialOptions)) trainsList.push(...json.data.partialOptions);
+        if (Array.isArray(json.data?.alternatives)) trainsList.push(...json.data.alternatives);
+      }
+      return trainsList;
     },
     enabled: Boolean(fromStation && toStation),
     staleTime: 5 * 60 * 1000,
@@ -70,12 +78,13 @@ export function ChartPage() {
 
   // Query 2: Fetch Train Coaches Summary & Composition
   const trainQuery = useQuery({
-    queryKey: ['trainCoaches', selectedTrain, fromStation, toStation, selectedDate],
+    queryKey: ['trainCoaches', selectedTrain, fromStation, toStation, selectedDate, selectedClass],
     queryFn: async () => {
       const url = new URL(`/api/v1/coaches/${encodeURIComponent(selectedTrain)}`, window.location.origin);
       if (fromStation) url.searchParams.set('from', fromStation);
       if (toStation) url.searchParams.set('to', toStation);
       if (selectedDate) url.searchParams.set('date', selectedDate);
+      if (selectedClass) url.searchParams.set('travelClass', selectedClass);
 
       const res = await fetch(url.toString());
       if (!res.ok) {
