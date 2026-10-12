@@ -58,23 +58,55 @@ export function CoachMap({
     return mod === 1 || mod === 4 || mod === 7;
   };
 
-  const getBerthTypeLabel = (berth) => {
+  const getBerthCode = (berth) => {
     if (!berth) return '';
     switch (berth.berthType) {
       case 'LOWER':
-        return 'LOWER';
+        return 'LB';
       case 'MIDDLE':
-        return 'MIDDLE';
+        return 'MB';
       case 'UPPER':
-        return 'UPPER';
+        return 'UB';
       case 'SIDE_LOWER':
-        return 'SIDE LOWER';
+        return 'SL';
       case 'SIDE_UPPER':
-        return 'SIDE UPPER';
+        return 'SU';
       case 'WINDOW':
-        return 'WINDOW';
+        return 'WS';
+      case 'AISLE':
+        return 'AS';
+      case 'CABIN':
+        return 'CB';
+      case 'COUPE':
+        return 'CP';
       default:
-        return berth.berthType || 'SEAT';
+        return berth.berthType?.slice(0, 2) || 'ST';
+    }
+  };
+
+  const getBerthTitle = (berth) => {
+    if (!berth) return '';
+    switch (berth.berthType) {
+      case 'LOWER':
+        return 'Lower Berth';
+      case 'MIDDLE':
+        return 'Middle Berth';
+      case 'UPPER':
+        return 'Upper Berth';
+      case 'SIDE_LOWER':
+        return 'Side Lower';
+      case 'SIDE_UPPER':
+        return 'Side Upper';
+      case 'WINDOW':
+        return 'Window Seat';
+      case 'AISLE':
+        return 'Aisle Seat';
+      case 'CABIN':
+        return 'Cabin Berth';
+      case 'COUPE':
+        return 'Coupe Berth';
+      default:
+        return berth.berthType || 'Seat';
     }
   };
 
@@ -83,7 +115,7 @@ export function CoachMap({
       return (
         <div
           className={`rounded-xl bg-slate-50 border border-dashed border-slate-200 ${
-            compact ? 'h-11' : 'h-14'
+            compact ? 'h-14' : 'h-16'
           }`}
         />
       );
@@ -93,25 +125,16 @@ export function CoachMap({
     const isHovered = hoveredBerth?.berthNumber === berth.berthNumber;
     const hasWindow = isWindowBerth(berth);
     const isVacant = berth.status === 'FULL_JOURNEY' || berth.status === 'PARTIAL_JOURNEY';
+    const isPartial = berth.status === 'PARTIAL_JOURNEY';
+    const berthCode = getBerthCode(berth);
+    const berthTitle = getBerthTitle(berth);
 
     // Style Rule:
-    // Vacant = Green
-    // Others = Gray
-    let bgClasses = 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200/80 hover:border-slate-300';
-    let labelColor = 'text-slate-400';
-    let statusText = 'Booked';
-
-    if (berth.status === 'FULL_JOURNEY') {
-      bgClasses =
-        'bg-emerald-500 text-white border-emerald-600 shadow-sm ring-1 ring-emerald-300 hover:bg-emerald-600';
-      labelColor = 'text-emerald-100 font-extrabold';
-      statusText = 'VACANT';
-    } else if (berth.status === 'PARTIAL_JOURNEY') {
-      bgClasses =
-        'bg-emerald-600 text-white border-emerald-700 shadow-xs ring-1 ring-emerald-400 hover:bg-emerald-700';
-      labelColor = 'text-emerald-100 font-extrabold';
-      statusText = `${berth.coveragePercent || 'Part'}%`;
-    }
+    // Vacant = Authentic Emerald Green Berth with Cushion Ridge
+    // Booked = Classic Soft Gray Seat
+    const bgClasses = isVacant
+      ? 'bg-emerald-600 text-white border-2 border-emerald-500 shadow-xs hover:bg-emerald-500 active:scale-95'
+      : 'bg-slate-100 text-slate-700 border border-slate-300 hover:bg-slate-200/90 active:scale-95';
 
     return (
       <button
@@ -120,26 +143,37 @@ export function CoachMap({
         onClick={() => onSelectBerth && onSelectBerth(berth)}
         onMouseEnter={() => setHoveredBerth(berth)}
         onMouseLeave={() => setHoveredBerth(null)}
-        title={`Seat ${berth.berthNumber} (${getBerthTypeLabel(berth)}) - ${statusText}`}
-        className={`relative flex flex-col justify-between p-1.5 sm:p-2 rounded-xl border text-center transition-all cursor-pointer select-none ${bgClasses} ${
-          compact ? 'min-h-[50px]' : 'min-h-[58px]'
+        title={`Seat ${berth.berthNumber} (${berthTitle}) - ${isVacant ? (isPartial ? `Vacant (${berth.coveragePercent}% segment)` : 'Vacant') : 'Booked'}`}
+        className={`relative flex flex-col justify-between p-1 sm:p-1.5 rounded-xl text-center transition-all cursor-pointer select-none ${bgClasses} ${
+          compact ? 'min-h-[56px]' : 'min-h-[64px]'
         } ${
           isSelected
-            ? 'ring-3 ring-blue-500 ring-offset-2 ring-offset-white scale-[1.05] z-10 border-blue-600 shadow-md'
+            ? 'ring-3 ring-blue-600 ring-offset-2 ring-offset-white scale-[1.04] z-10 border-blue-600 shadow-md'
             : isHovered
-            ? 'scale-[1.02]'
+            ? 'scale-[1.02] shadow-xs'
             : ''
         }`}
       >
-        {/* Top: Position Label & SVG Window */}
-        <div className="flex items-center justify-between w-full leading-none text-[8.5px] font-extrabold tracking-wider">
-          <span className={`truncate ${labelColor}`}>
-            {getBerthTypeLabel(berth)}
+        {/* Cushion Headrest Bar (Authentic Railway Leather Berth Detail) */}
+        <div
+          className={`w-full h-1 rounded-full mb-0.5 transition-opacity ${
+            isVacant ? 'bg-white/40' : 'bg-slate-300'
+          }`}
+        />
+
+        {/* Top: Berth Code (LB, MB, UB, SL, SU) & Window Icon */}
+        <div className="flex items-center justify-between w-full leading-none px-0.5">
+          <span
+            className={`text-[9.5px] sm:text-[10px] font-black uppercase tracking-wider ${
+              isVacant ? 'text-emerald-100' : 'text-slate-600'
+            }`}
+          >
+            {berthCode}
           </span>
           {hasWindow && (
             <span
-              className={`shrink-0 ml-1 inline-flex items-center ${
-                isVacant ? 'text-white' : 'text-sky-500'
+              className={`shrink-0 inline-flex items-center gap-0.5 ${
+                isVacant ? 'text-emerald-100' : 'text-sky-600'
               }`}
               title="Window Seat"
             >
@@ -148,20 +182,24 @@ export function CoachMap({
           )}
         </div>
 
-        {/* Center: Big Bold Seat Number */}
-        <div className="font-mono font-black text-sm sm:text-base tracking-tight leading-tight my-0.5">
+        {/* Center: Prominent Railway Berth Number */}
+        <div
+          className={`font-mono font-black text-sm sm:text-base tracking-tight leading-none my-0.5 ${
+            isVacant ? 'text-white' : 'text-slate-900'
+          }`}
+        >
           {berth.berthNumber}
         </div>
 
         {/* Bottom: Vacant/Booked Status Pill */}
-        <div className="leading-none text-[8px] font-bold uppercase tracking-wider">
+        <div className="leading-none text-[8px] sm:text-[8.5px] font-bold uppercase tracking-wider">
           {isVacant ? (
-            <span className="text-white drop-shadow-xs font-black">
-              {statusText}
+            <span className="text-emerald-50 bg-emerald-700/80 px-1 py-0.2 rounded font-black inline-block">
+              {isPartial ? `${berth.coveragePercent || 'Part'}%` : 'VACANT'}
             </span>
           ) : (
             <span className="text-slate-400 font-semibold">
-              {statusText}
+              BOOKED
             </span>
           )}
         </div>
@@ -298,9 +336,17 @@ export function CoachMap({
                     <AislePathSvg className="w-2.5 h-full text-slate-400" />
                   </div>
 
-                  {/* Right: Side Bay Seats */}
-                  <div className="col-span-4 flex flex-col gap-1.5 justify-between">
-                    {sideBerths.map((b) => renderSeat(b, true))}
+                  {/* Right: Side Bay Seats (Symmetrically aligned with Main Compartment) */}
+                  <div className="col-span-4 flex flex-col gap-1.5">
+                    {sideBerths[0] && renderSeat(sideBerths[0], true)}
+                    {benchB.length > 0 && sideBerths.length > 1 && (
+                      <div className="flex items-center justify-center pt-1 border-t border-dashed border-slate-200">
+                        <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">
+                          Side Bay
+                        </span>
+                      </div>
+                    )}
+                    {sideBerths[1] && renderSeat(sideBerths[1], true)}
                   </div>
                 </div>
               </div>

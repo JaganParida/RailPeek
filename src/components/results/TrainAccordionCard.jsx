@@ -160,21 +160,26 @@ export function TrainAccordionCard({
           isOpen && hasVacancies ? 'bg-slate-50/70' : 'bg-white hover:bg-slate-50/70'
         }`}
       >
-        {/* Top Row: Train Identity + Vacancy Status */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 min-w-0">
-          {/* Left: Train Icon + No + Name + Class + Best Route Badge */}
-          <div className="flex items-center gap-2 flex-wrap min-w-0">
+        {/* Top Row: Train Identity + Badges Row */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 sm:gap-2 min-w-0">
+          {/* Train Identity: Icon + Number + Name */}
+          <div className="flex items-center gap-2 min-w-0">
             <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-blue-50 border border-blue-200 flex items-center justify-center text-[#1e3a8a] shrink-0">
               <Train className="w-4 h-4" />
             </div>
-            <span className="font-mono text-base font-black text-[#1e3a8a] tracking-tight">
+            <span className="font-mono text-base font-black text-[#1e3a8a] tracking-tight shrink-0">
               {trainNumber}
             </span>
             <h3 className="text-sm sm:text-base font-bold text-slate-900 truncate">
               {trainName}
             </h3>
+          </div>
+
+          {/* All 3 Badges Grouped in One Single Line on Mobile */}
+          <div className="flex items-center gap-1.5 shrink-0 self-start sm:self-auto flex-nowrap overflow-x-auto scrollbar-none py-0.5">
+            {/* 1. Travel Class Badge */}
             <span
-              className={`text-[10px] sm:text-xs font-bold px-1.5 py-0.5 rounded border ${
+              className={`text-[10px] sm:text-xs font-bold px-1.5 py-0.5 rounded border shrink-0 whitespace-nowrap ${
                 !trainOffersSearchedClass && selectedClass
                   ? 'bg-amber-50 text-amber-900 border-amber-300'
                   : 'bg-slate-100 text-slate-700 border border-slate-300'
@@ -183,37 +188,33 @@ export function TrainAccordionCard({
             >
               {!trainOffersSearchedClass && trainClasses.length > 0 ? trainClasses.join('/') : currentClass}
             </span>
-            {isBestMatch && (
-              <span className="hidden sm:inline-flex text-[10px] font-extrabold px-2 py-0.5 rounded bg-blue-100 text-blue-900 border border-blue-200 items-center gap-1 shrink-0">
-                <ShieldCheck className="w-3 h-3 text-blue-700" />
-                <span>Best Route</span>
-              </span>
-            )}
-          </div>
 
-          {/* Right: Vacancy Status Badge + Mobile Best Route */}
-          <div className="flex items-center gap-1.5 shrink-0 self-start sm:self-auto max-w-full">
+            {/* 2. Best Route Badge */}
             {isBestMatch && (
-              <span className="sm:hidden text-[10px] font-extrabold px-1.5 py-0.5 rounded-md bg-blue-100 text-blue-900 border border-blue-200 inline-flex items-center gap-1 shrink-0 whitespace-nowrap">
+              <span className="text-[10px] sm:text-xs font-extrabold px-1.5 sm:px-2 py-0.5 rounded-md bg-blue-100 text-blue-900 border border-blue-200 inline-flex items-center gap-1 shrink-0 whitespace-nowrap">
                 <ShieldCheck className="w-3 h-3 text-blue-700 shrink-0" />
-                <span>Best Route</span>
+                <span className="sm:inline hidden">Best Route</span>
+                <span className="sm:hidden">Best</span>
               </span>
             )}
+
+            {/* 3. Vacancy / Operational Status Badge */}
             {isDeparted ? (
               <span className="text-[10px] sm:text-xs font-semibold px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-md bg-slate-100 text-slate-600 border border-slate-300 inline-flex items-center gap-1 shrink-0 whitespace-nowrap">
                 <Clock className="w-3 h-3 text-slate-500 shrink-0" />
-                <span>Departed ({departureTime})</span>
+                <span>Departed</span>
               </span>
             ) : isTTEOnly ? (
               <span className="text-[10px] sm:text-xs font-bold px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-md bg-amber-50 text-amber-900 border border-amber-300 inline-flex items-center gap-1 shrink-0 whitespace-nowrap">
                 <Clock className="w-3 h-3 text-amber-600 shrink-0" />
-                <span className="sm:hidden">Final Chart • TTE</span>
+                <span className="sm:hidden">TTE Only</span>
                 <span className="hidden sm:inline">Final Chart Done • TTE Only</span>
               </span>
             ) : hasVacancies ? (
               <span className="text-[10px] sm:text-xs font-bold px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-md border inline-flex items-center gap-1 sm:gap-1.5 bg-emerald-50 text-emerald-800 border-emerald-400 shrink-0 whitespace-nowrap">
                 <CheckCircle2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-emerald-600 shrink-0" />
-                <span>{totalVacantCount} Vacant {totalVacantCount === 1 ? 'Berth' : 'Berths'} Available</span>
+                <span className="sm:inline hidden">{totalVacantCount} Vacant {totalVacantCount === 1 ? 'Berth' : 'Berths'} Available</span>
+                <span className="sm:hidden">{totalVacantCount} Vacant</span>
               </span>
             ) : availableAltClasses.length > 0 ? (
               <div className="flex items-center gap-1 sm:gap-1.5 flex-nowrap shrink-0 overflow-x-auto scrollbar-none">

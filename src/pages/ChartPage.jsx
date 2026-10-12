@@ -162,35 +162,43 @@ export function ChartPage() {
     <div className="py-3 sm:py-6 bg-slate-50 min-h-screen text-slate-800">
       <div className="max-w-6xl mx-auto px-2.5 sm:px-6 space-y-3.5">
         {/* Top Sticky Bar: Back to Search & Route Summary Badge */}
-        <div className="flex items-center justify-between gap-2.5 flex-wrap p-2.5 sm:p-3 rounded-xl bg-white border border-slate-200 shadow-xs">
-          <div className="flex items-center gap-2 min-w-0">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={handleBackToSearch}
-              leftIcon={ArrowLeft}
-              className="text-xs font-bold bg-white text-slate-700 hover:bg-slate-100 border-slate-300 shrink-0 shadow-xs"
-            >
-              Back
-            </Button>
-            <div className="text-xs sm:text-sm font-bold text-slate-900 truncate flex items-center gap-1.5">
-              <span className="font-mono text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">{fromStation}</span>
-              <span className="text-slate-400 font-bold">&rarr;</span>
-              <span className="font-mono text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">{toStation}</span>
-              <span className="text-slate-300 hidden sm:inline">&bull;</span>
-              <span className="text-slate-600 text-xs hidden sm:inline font-mono">{selectedDate}</span>
+        <div className="p-2.5 sm:p-3 rounded-xl bg-white border border-slate-200 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+          {/* Row 1 on Mobile / Left on Desktop: Back Button & Route & Date */}
+          <div className="flex items-center justify-between sm:justify-start gap-2 min-w-0 w-full sm:w-auto">
+            <div className="flex items-center gap-2 min-w-0">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleBackToSearch}
+                leftIcon={ArrowLeft}
+                className="text-xs font-bold bg-white text-slate-700 hover:bg-slate-100 border-slate-300 shrink-0 shadow-xs h-8 px-2.5"
+              >
+                Back
+              </Button>
+              <div className="text-xs sm:text-sm font-bold text-slate-900 truncate flex items-center gap-1.5">
+                <span className="font-mono text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 font-extrabold">{fromStation}</span>
+                <span className="text-slate-400 font-bold">&rarr;</span>
+                <span className="font-mono text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 font-extrabold">{toStation}</span>
+                <span className="text-slate-300 hidden sm:inline">&bull;</span>
+                <span className="text-slate-500 text-xs hidden sm:inline font-mono">{selectedDate}</span>
+              </div>
             </div>
+
+            {/* Mobile date badge */}
+            <span className="text-slate-600 text-[11px] font-mono sm:hidden shrink-0 font-bold bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md">
+              {selectedDate}
+            </span>
           </div>
 
-          {/* Clean Train Switcher Dropdown (From Searched Route) */}
-          <div className="flex items-center gap-2 sm:ml-auto shrink-0 max-w-full">
+          {/* Row 2 on Mobile / Right on Desktop: Clean Train Switcher Dropdown */}
+          <div className="w-full sm:w-auto sm:ml-auto">
             {availableTrainsOnRoute.length > 0 ? (
-              <div className="relative max-w-full">
+              <div className="relative w-full sm:w-auto">
                 <select
                   value={selectedTrain}
                   onChange={(e) => handleTrainChange(e.target.value)}
-                  className="appearance-none bg-white text-slate-900 text-xs font-bold px-3 py-1.5 pr-7 rounded-lg border border-slate-300 shadow-xs hover:border-slate-400 focus:outline-none focus:border-blue-500 cursor-pointer max-w-[210px] sm:max-w-none truncate"
+                  className="w-full sm:w-auto appearance-none bg-slate-50 hover:bg-slate-100 sm:bg-white text-slate-900 text-xs font-bold px-3 py-2 pr-8 rounded-lg border border-slate-300 shadow-xs hover:border-slate-400 focus:outline-none focus:border-blue-500 cursor-pointer truncate"
                 >
                   {availableTrainsOnRoute.map((t) => (
                     <option key={t.trainNumber} value={t.trainNumber}>
@@ -198,10 +206,10 @@ export function ChartPage() {
                     </option>
                   ))}
                 </select>
-                <ChevronDown className="w-3.5 h-3.5 text-slate-500 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <ChevronDown className="w-3.5 h-3.5 text-slate-500 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
               </div>
             ) : (
-              <span className="font-mono font-bold text-xs text-blue-700 bg-blue-50 px-2 py-1 rounded border border-blue-200">
+              <span className="font-mono font-bold text-xs text-blue-700 bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-200 inline-block">
                 Train {selectedTrain}
               </span>
             )}

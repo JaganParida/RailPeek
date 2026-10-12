@@ -549,22 +549,20 @@ export function SearchResultsPage() {
 
         {/* Single Non-Wrapping Interactive Coach Layout Redirect Banner (Only when a train with vacant berths is open/viewing) */}
         {activeViewingTrain && (
-          <div className="p-2 sm:p-2.5 rounded-xl bg-white border border-emerald-300 shadow-xs flex items-center justify-between gap-2 overflow-hidden">
-            <div className="flex items-center gap-2 min-w-0">
+          <div className="p-2 sm:p-2.5 rounded-xl bg-white border border-emerald-300 shadow-xs flex items-center justify-between gap-1.5 sm:gap-2 overflow-hidden">
+            <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 shrink-0">
               <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-700 shrink-0">
                 <Train className="w-4 h-4" />
               </div>
-              <div className="flex items-center gap-1.5 min-w-0">
-                <span className="font-mono text-xs sm:text-sm font-black text-slate-900 shrink-0">
-                  {activeViewingTrain.trainNumber}
-                </span>
-                <span className="text-xs font-bold text-slate-700 truncate hidden xs:inline max-w-[140px] sm:max-w-[220px]">
-                  {activeViewingTrain.trainName}
-                </span>
-                <span className="text-[10px] sm:text-[11px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded shrink-0 whitespace-nowrap">
-                  {activeViewingTrain.totalVacantCount} Vacant
-                </span>
-              </div>
+              <span className="font-mono text-xs sm:text-sm font-black text-slate-900 shrink-0">
+                {activeViewingTrain.trainNumber}
+              </span>
+              <span className="text-xs font-bold text-slate-700 truncate hidden md:inline max-w-[160px]">
+                {activeViewingTrain.trainName}
+              </span>
+              <span className="text-[10px] sm:text-xs font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded shrink-0 whitespace-nowrap">
+                {activeViewingTrain.totalVacantCount} Vacant
+              </span>
             </div>
 
             <button
@@ -581,7 +579,8 @@ export function SearchResultsPage() {
               title={`View Interactive Coach Bogie & Seat Layout for Train ${activeViewingTrain.trainNumber}`}
             >
               <Compass className="w-3.5 h-3.5 text-white shrink-0" />
-              <span>View Coach Layout</span>
+              <span className="hidden sm:inline">View Coach Layout</span>
+              <span className="sm:hidden">Coach Layout</span>
               <ChevronRight className="w-3.5 h-3.5 text-white shrink-0" />
             </button>
           </div>
