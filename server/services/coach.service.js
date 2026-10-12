@@ -394,7 +394,17 @@ export async function getCoachVacancy({
             'SL': { fullJourney: 0 },
           },
         },
-        bays: groupBerthsIntoBays(baseBerths, normClass),
+        bays: groupBerthsIntoBays(
+          baseBerths.map((b) => ({
+            ...b,
+            status: 'UNAVAILABLE',
+            statusLabel: 'Chart Not Prepared',
+            coveragePercent: 0,
+            occupiedSegments: [],
+            vacantSegments: [],
+          })),
+          normClass
+        ),
         berths: baseBerths.map((b) => ({
           ...b,
           status: 'UNAVAILABLE',

@@ -309,6 +309,7 @@ export function ChartPage() {
             trainNumber={selectedTrain}
             trainName={coachData.trainName || trainData?.trainName || ''}
             bays={coachData.bays || []}
+            berths={coachData.berths || []}
             selectedBerthNumber={selectedBerthNumber}
             onSelectBerth={(b) => setSelectedBerthNumber(b.berthNumber)}
           />

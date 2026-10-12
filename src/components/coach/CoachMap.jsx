@@ -36,7 +36,7 @@ function BlueprintSeat({
 }) {
   if (!berth) {
     return (
-      <div className="w-full h-[46px] sm:h-[50px] max-w-[72px] mx-auto rounded-md border border-dashed border-slate-200 bg-slate-50/50" />
+      <div className="w-full h-[42px] sm:h-[46px] rounded-md border border-dashed border-slate-200 bg-slate-50/50" />
     );
   }
 
@@ -45,35 +45,80 @@ function BlueprintSeat({
   const isLeft = orientation === 'LEFT';
   const isRight = orientation === 'RIGHT';
 
+  // Authentic curvature: Backrest side is rounded-xl, front facing side is rounded-xs
   const roundedClass = isLeft
-    ? 'rounded-l-lg rounded-r-xs'
+    ? 'rounded-l-xl rounded-r-xs'
     : isRight
-    ? 'rounded-r-lg rounded-l-xs'
+    ? 'rounded-r-xl rounded-l-xs'
     : isBottom
-    ? 'rounded-t-xs rounded-b-lg'
-    : 'rounded-t-lg rounded-b-xs';
+    ? 'rounded-t-xs rounded-b-xl'
+    : 'rounded-t-xl rounded-b-xs';
 
+  // Color theme: Vacant = Vibrant Emerald Green; Booked = Slate Gray
+  const colorClass = isVacant
+    ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-700 shadow-2xs'
+    : 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-300 shadow-2xs';
+
+  const selectedClass = isSelected
+    ? 'ring-3 ring-blue-600 ring-offset-1 ring-offset-white scale-[1.03] z-10 border-blue-600 shadow-md'
+    : 'active:scale-95';
+
+  const labelColorClass = isVacant ? 'text-emerald-100' : 'text-slate-500';
+
+  // Desktop Left Bench: Seat Number on Left (backrest), Label on Right (table / facing right)
+  if (isLeft) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        title={`Seat ${berth.berthNumber} (${positionLabel}) - ${isVacant ? 'Vacant' : 'Booked'}`}
+        className={`relative w-full h-[42px] sm:h-[46px] flex flex-row items-center justify-between px-2.5 py-1 transition-all duration-150 select-none cursor-pointer border ${roundedClass} ${colorClass} ${selectedClass}`}
+      >
+        <span className="font-mono font-black text-sm sm:text-base leading-none tracking-tight">
+          {berth.berthNumber}
+        </span>
+        <span
+          className={`text-[8px] sm:text-[8.5px] font-extrabold uppercase tracking-tight leading-none ${labelColorClass}`}
+        >
+          {positionLabel}
+        </span>
+      </button>
+    );
+  }
+
+  // Desktop Right Bench: Label on Left (table / facing left), Seat Number on Right (backrest)
+  if (isRight) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        title={`Seat ${berth.berthNumber} (${positionLabel}) - ${isVacant ? 'Vacant' : 'Booked'}`}
+        className={`relative w-full h-[42px] sm:h-[46px] flex flex-row items-center justify-between px-2.5 py-1 transition-all duration-150 select-none cursor-pointer border ${roundedClass} ${colorClass} ${selectedClass}`}
+      >
+        <span
+          className={`text-[8px] sm:text-[8.5px] font-extrabold uppercase tracking-tight leading-none ${labelColorClass}`}
+        >
+          {positionLabel}
+        </span>
+        <span className="font-mono font-black text-sm sm:text-base leading-none tracking-tight">
+          {berth.berthNumber}
+        </span>
+      </button>
+    );
+  }
+
+  // Mobile Vertical Views (TOP / BOTTOM)
   return (
     <button
       type="button"
       onClick={onClick}
       title={`Seat ${berth.berthNumber} (${positionLabel}) - ${isVacant ? 'Vacant' : 'Booked'}`}
-      className={`relative w-full h-[46px] sm:h-[50px] max-w-[76px] mx-auto flex flex-col items-center justify-between py-1 px-0.5 transition-all duration-150 select-none cursor-pointer border ${roundedClass} ${
-        isVacant
-          ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-700 shadow-2xs'
-          : 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-300 shadow-2xs'
-      } ${
-        isSelected
-          ? 'ring-3 ring-blue-600 ring-offset-1 ring-offset-white scale-[1.03] z-10 border-blue-600 shadow-md'
-          : 'active:scale-95'
-      }`}
+      className={`relative w-full h-[46px] sm:h-[50px] max-w-[76px] mx-auto flex flex-col items-center justify-between py-1 px-0.5 transition-all duration-150 select-none cursor-pointer border ${roundedClass} ${colorClass} ${selectedClass}`}
     >
       {isBottom ? (
         <>
           <span
-            className={`text-[8px] sm:text-[8.5px] font-extrabold uppercase tracking-tight leading-none mt-0.5 ${
-              isVacant ? 'text-emerald-100' : 'text-slate-500'
-            }`}
+            className={`text-[8px] sm:text-[8.5px] font-extrabold uppercase tracking-tight leading-none mt-0.5 ${labelColorClass}`}
           >
             {positionLabel}
           </span>
@@ -87,9 +132,7 @@ function BlueprintSeat({
             {berth.berthNumber}
           </span>
           <span
-            className={`text-[8px] sm:text-[8.5px] font-extrabold uppercase tracking-tight leading-none mb-0.5 ${
-              isVacant ? 'text-emerald-100' : 'text-slate-500'
-            }`}
+            className={`text-[8px] sm:text-[8.5px] font-extrabold uppercase tracking-tight leading-none mb-0.5 ${labelColorClass}`}
           >
             {positionLabel}
           </span>
@@ -105,12 +148,38 @@ export function CoachMap({
   trainNumber,
   trainName,
   bays = [],
+  berths = [],
   selectedBerthNumber,
   onSelectBerth,
 }) {
+  const berthsMap = React.useMemo(() => {
+    const map = new Map();
+    if (Array.isArray(berths)) {
+      for (const b of berths) {
+        if (b && b.berthNumber) map.set(b.berthNumber, b);
+      }
+    }
+    return map;
+  }, [berths]);
+
   const isVacantBerth = (berth) => {
     if (!berth) return false;
-    return berth.status === 'FULL_JOURNEY' || berth.status === 'PARTIAL_JOURNEY';
+    const enriched = berthsMap.get(berth.berthNumber) || berth;
+    if (enriched.isVacant === true || enriched.vacant === true || enriched.available === true) return true;
+    if (typeof enriched.coveragePercent === 'number' && enriched.coveragePercent > 0) return true;
+    const st = String(enriched.status || '').toUpperCase().trim();
+    if (
+      st === 'FULL_JOURNEY' ||
+      st === 'PARTIAL_JOURNEY' ||
+      st === 'VACANT' ||
+      st === 'AVAILABLE' ||
+      st === 'AVAILABLE_FULL' ||
+      st === 'AVAILABLE_PARTIAL' ||
+      st === 'CNF'
+    ) {
+      return true;
+    }
+    return false;
   };
 
   const getPositionLabel = (berth, idx, isSide, rowLength = 3, isRightSide = false) => {
@@ -570,7 +639,7 @@ export function CoachMap({
                 return (
                   <div
                     key={`desktop-bay-${bay.bayNumber}`}
-                    className="flex flex-col justify-between p-2.5 rounded-xl border border-slate-200 bg-slate-50 min-w-[195px] shadow-2xs"
+                    className="flex flex-col justify-between p-2.5 rounded-xl border border-slate-200 bg-slate-50 min-w-[230px] sm:min-w-[240px] shadow-2xs"
                   >
                     {/* Bay Heading */}
                     <div className="flex items-center justify-between pb-1 mb-1.5 border-b border-slate-200 text-[10.5px]">
@@ -586,9 +655,9 @@ export function CoachMap({
                     {/* Top 3-Seat Facing Benches (Above Aisle: Left faces Right) */}
                     <div className="flex items-center justify-between gap-2 w-full px-0.5">
                       {/* Left Bench */}
-                      <div className="relative pl-1.5 pr-0.5 py-0.5 shrink-0 flex-1">
-                        <div className="absolute top-0 bottom-0 left-0 w-3 border-l-2 border-y-2 border-slate-300 rounded-l-lg pointer-events-none" />
-                        <div className="flex flex-col gap-1 relative z-1">
+                      <div className="relative pl-2 pr-0.5 py-0.5 shrink-0 flex-1">
+                        <div className="absolute top-0 bottom-0 left-0 w-3 border-l-2 border-y-2 border-slate-300 rounded-l-xl pointer-events-none" />
+                        <div className="flex flex-col gap-1.5 relative z-1">
                           {leftBenchA.map((b, idx) => (
                             <BlueprintSeat
                               key={b.berthNumber}
@@ -604,13 +673,13 @@ export function CoachMap({
                       </div>
 
                       {/* Legroom Table */}
-                      <div className="flex flex-col items-center justify-center shrink-0">
-                        <div className="w-1.5 h-14 bg-slate-300 rounded-full shadow-2xs" title="Snack Table" />
+                      <div className="flex flex-col items-center justify-center shrink-0 px-0.5">
+                        <div className="w-1.5 h-20 bg-slate-300 rounded-full shadow-2xs" title="Snack Table" />
                       </div>
 
                       {/* Right Bench */}
-                      <div className="relative pr-1.5 pl-0.5 py-0.5 shrink-0 flex-1">
-                        <div className="flex flex-col gap-1 relative z-1">
+                      <div className="relative pr-2 pl-0.5 py-0.5 shrink-0 flex-1">
+                        <div className="flex flex-col gap-1.5 relative z-1">
                           {leftBenchB.map((b, idx) => (
                             <BlueprintSeat
                               key={b.berthNumber}
@@ -623,7 +692,7 @@ export function CoachMap({
                             />
                           ))}
                         </div>
-                        <div className="absolute top-0 bottom-0 right-0 w-3 border-r-2 border-y-2 border-slate-300 rounded-r-lg pointer-events-none" />
+                        <div className="absolute top-0 bottom-0 right-0 w-3 border-r-2 border-y-2 border-slate-300 rounded-r-xl pointer-events-none" />
                       </div>
                     </div>
 
@@ -639,9 +708,9 @@ export function CoachMap({
                     {/* Bottom 3-Seat Facing Benches (Below Aisle: Left faces Right) */}
                     <div className="flex items-center justify-between gap-2 w-full px-0.5">
                       {/* Left Bench */}
-                      <div className="relative pl-1.5 pr-0.5 py-0.5 shrink-0 flex-1">
-                        <div className="absolute top-0 bottom-0 left-0 w-3 border-l-2 border-y-2 border-slate-300 rounded-l-lg pointer-events-none" />
-                        <div className="flex flex-col gap-1 relative z-1">
+                      <div className="relative pl-2 pr-0.5 py-0.5 shrink-0 flex-1">
+                        <div className="absolute top-0 bottom-0 left-0 w-3 border-l-2 border-y-2 border-slate-300 rounded-l-xl pointer-events-none" />
+                        <div className="flex flex-col gap-1.5 relative z-1">
                           {rightBenchA.map((b, idx) => (
                             <BlueprintSeat
                               key={b.berthNumber}
@@ -657,13 +726,13 @@ export function CoachMap({
                       </div>
 
                       {/* Legroom Table */}
-                      <div className="flex flex-col items-center justify-center shrink-0">
-                        <div className="w-1.5 h-14 bg-slate-300 rounded-full shadow-2xs" title="Snack Table" />
+                      <div className="flex flex-col items-center justify-center shrink-0 px-0.5">
+                        <div className="w-1.5 h-20 bg-slate-300 rounded-full shadow-2xs" title="Snack Table" />
                       </div>
 
                       {/* Right Bench */}
-                      <div className="relative pr-1.5 pl-0.5 py-0.5 shrink-0 flex-1">
-                        <div className="flex flex-col gap-1 relative z-1">
+                      <div className="relative pr-2 pl-0.5 py-0.5 shrink-0 flex-1">
+                        <div className="flex flex-col gap-1.5 relative z-1">
                           {rightBenchB.map((b, idx) => (
                             <BlueprintSeat
                               key={b.berthNumber}
@@ -676,7 +745,7 @@ export function CoachMap({
                             />
                           ))}
                         </div>
-                        <div className="absolute top-0 bottom-0 right-0 w-3 border-r-2 border-y-2 border-slate-300 rounded-r-lg pointer-events-none" />
+                        <div className="absolute top-0 bottom-0 right-0 w-3 border-r-2 border-y-2 border-slate-300 rounded-r-xl pointer-events-none" />
                       </div>
                     </div>
                   </div>
@@ -706,7 +775,7 @@ export function CoachMap({
               return (
                 <div
                   key={`desktop-bay-${bay.bayNumber}`}
-                  className="flex flex-col justify-between p-2.5 rounded-xl border border-slate-200 bg-slate-50 min-w-[195px] shadow-2xs"
+                  className="flex flex-col justify-between p-2.5 rounded-xl border border-slate-200 bg-slate-50 min-w-[230px] sm:min-w-[240px] shadow-2xs"
                 >
                   {/* Bay Tag */}
                   <div className="flex items-center justify-between pb-1 mb-1.5 border-b border-slate-200 text-[10.5px]">
@@ -722,10 +791,10 @@ export function CoachMap({
                   {/* Top: Main Compartment (Facing Benches: Left Bench A facing Right Bench B) */}
                   <div className="flex items-center justify-between gap-2 w-full px-0.5">
                     {/* Left Bench (Bench A) - Vertically Stacked: WINDOW (top) -> MIDDLE -> AISLE (walkway) */}
-                    <div className="relative pl-1.5 pr-0.5 py-0.5 shrink-0 flex-1">
+                    <div className="relative pl-2 pr-0.5 py-0.5 shrink-0 flex-1">
                       {/* Left U-Bracket Rail */}
-                      <div className="absolute top-0 bottom-0 left-0 w-3 border-l-2 border-y-2 border-slate-300 rounded-l-lg pointer-events-none" />
-                      <div className="flex flex-col gap-1 relative z-1">
+                      <div className="absolute top-0 bottom-0 left-0 w-3 border-l-2 border-y-2 border-slate-300 rounded-l-xl pointer-events-none" />
+                      <div className="flex flex-col gap-1.5 relative z-1">
                         {benchA.map((b, idx) => (
                           <BlueprintSeat
                             key={b.berthNumber}
@@ -741,14 +810,14 @@ export function CoachMap({
                     </div>
 
                     {/* Center Legroom & Vertical Snack Table */}
-                    <div className="flex flex-col items-center justify-center shrink-0">
-                      <div className="w-1.5 h-14 bg-slate-300 rounded-full shadow-2xs" title="Snack Table" />
+                    <div className="flex flex-col items-center justify-center shrink-0 px-0.5">
+                      <div className="w-1.5 h-20 bg-slate-300 rounded-full shadow-2xs" title="Snack Table" />
                     </div>
 
                     {/* Right Bench (Bench B) - Vertically Stacked: WINDOW (top) -> MIDDLE -> AISLE (walkway) */}
                     {benchB.length > 0 && (
-                      <div className="relative pr-1.5 pl-0.5 py-0.5 shrink-0 flex-1">
-                        <div className="flex flex-col gap-1 relative z-1">
+                      <div className="relative pr-2 pl-0.5 py-0.5 shrink-0 flex-1">
+                        <div className="flex flex-col gap-1.5 relative z-1">
                           {benchB.map((b, idx) => (
                             <BlueprintSeat
                               key={b.berthNumber}
@@ -762,7 +831,7 @@ export function CoachMap({
                           ))}
                         </div>
                         {/* Right Inverted U-Bracket Rail */}
-                        <div className="absolute top-0 bottom-0 right-0 w-3 border-r-2 border-y-2 border-slate-300 rounded-r-lg pointer-events-none" />
+                        <div className="absolute top-0 bottom-0 right-0 w-3 border-r-2 border-y-2 border-slate-300 rounded-r-xl pointer-events-none" />
                       </div>
                     )}
                   </div>
@@ -776,14 +845,15 @@ export function CoachMap({
                     </span>
                   </div>
 
-                  {/* Bottom: Side Berths (Side Lower on left, Side Upper on right along bottom wall) */}
-                  <div className="grid grid-cols-2 gap-1.5">
-                    <div className="relative pt-1.5 px-0.5 pb-0">
-                      <div className="absolute top-0 left-0 right-0 h-4 border-t-2 border-x-2 border-slate-300 rounded-t-lg pointer-events-none" />
+                  {/* Bottom: Side Berths (Side Lower on left facing Right, Side Upper on right facing Left) */}
+                  <div className="flex items-center justify-between gap-2 w-full px-0.5">
+                    {/* Side Lower (Left) */}
+                    <div className="relative pl-2 pr-0.5 py-0.5 shrink-0 flex-1">
+                      <div className="absolute top-0 bottom-0 left-0 w-3 border-l-2 border-y-2 border-slate-300 rounded-l-xl pointer-events-none" />
                       <div className="relative z-1">
                         <BlueprintSeat
                           berth={sideBerths[0]}
-                          orientation="TOP"
+                          orientation="LEFT"
                           positionLabel="SIDE LOWER"
                           isVacant={isVacantBerth(sideBerths[0])}
                           isSelected={selectedBerthNumber === sideBerths[0]?.berthNumber}
@@ -793,11 +863,18 @@ export function CoachMap({
                         />
                       </div>
                     </div>
-                    <div className="relative pb-1.5 px-0.5 pt-0">
+
+                    {/* Legroom Table */}
+                    <div className="flex flex-col items-center justify-center shrink-0 px-0.5">
+                      <div className="w-1.5 h-6 bg-slate-300 rounded-full shadow-2xs" />
+                    </div>
+
+                    {/* Side Upper (Right) */}
+                    <div className="relative pr-2 pl-0.5 py-0.5 shrink-0 flex-1">
                       <div className="relative z-1">
                         <BlueprintSeat
                           berth={sideBerths[1]}
-                          orientation="BOTTOM"
+                          orientation="RIGHT"
                           positionLabel="SIDE UPPER"
                           isVacant={isVacantBerth(sideBerths[1])}
                           isSelected={selectedBerthNumber === sideBerths[1]?.berthNumber}
@@ -806,7 +883,7 @@ export function CoachMap({
                           }
                         />
                       </div>
-                      <div className="absolute bottom-0 left-0 right-0 h-4 border-b-2 border-x-2 border-slate-300 rounded-b-lg pointer-events-none" />
+                      <div className="absolute top-0 bottom-0 right-0 w-3 border-r-2 border-y-2 border-slate-300 rounded-r-xl pointer-events-none" />
                     </div>
                   </div>
                 </div>
