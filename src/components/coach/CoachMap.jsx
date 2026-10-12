@@ -41,17 +41,24 @@ function BlueprintSeat({
   }
 
   const isTop = orientation === 'TOP';
+  const isBottom = orientation === 'BOTTOM';
+  const isLeft = orientation === 'LEFT';
+  const isRight = orientation === 'RIGHT';
+
+  const roundedClass = isLeft
+    ? 'rounded-l-lg rounded-r-xs'
+    : isRight
+    ? 'rounded-r-lg rounded-l-xs'
+    : isBottom
+    ? 'rounded-t-xs rounded-b-lg'
+    : 'rounded-t-lg rounded-b-xs';
 
   return (
     <button
       type="button"
       onClick={onClick}
       title={`Seat ${berth.berthNumber} (${positionLabel}) - ${isVacant ? 'Vacant' : 'Booked'}`}
-      className={`relative w-full h-[46px] sm:h-[50px] max-w-[72px] mx-auto flex flex-col items-center justify-between py-1 px-0.5 transition-all duration-150 select-none cursor-pointer border ${
-        isTop
-          ? 'rounded-t-lg rounded-b-xs'
-          : 'rounded-t-xs rounded-b-lg'
-      } ${
+      className={`relative w-full h-[46px] sm:h-[50px] max-w-[76px] mx-auto flex flex-col items-center justify-between py-1 px-0.5 transition-all duration-150 select-none cursor-pointer border ${roundedClass} ${
         isVacant
           ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-700 shadow-2xs'
           : 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-300 shadow-2xs'
@@ -61,24 +68,8 @@ function BlueprintSeat({
           : 'active:scale-95'
       }`}
     >
-      {isTop ? (
+      {isBottom ? (
         <>
-          {/* Top Line: Big Bold Seat Number */}
-          <span className="font-mono font-black text-sm sm:text-base leading-tight tracking-tight mt-0.5">
-            {berth.berthNumber}
-          </span>
-          {/* Bottom Line: Clean Uppercase Position Label */}
-          <span
-            className={`text-[8px] sm:text-[8.5px] font-extrabold uppercase tracking-tight leading-none mb-0.5 ${
-              isVacant ? 'text-emerald-100' : 'text-slate-500'
-            }`}
-          >
-            {positionLabel}
-          </span>
-        </>
-      ) : (
-        <>
-          {/* Top Line: Clean Uppercase Position Label */}
           <span
             className={`text-[8px] sm:text-[8.5px] font-extrabold uppercase tracking-tight leading-none mt-0.5 ${
               isVacant ? 'text-emerald-100' : 'text-slate-500'
@@ -86,9 +77,21 @@ function BlueprintSeat({
           >
             {positionLabel}
           </span>
-          {/* Bottom Line: Big Bold Seat Number */}
           <span className="font-mono font-black text-sm sm:text-base leading-tight tracking-tight mb-0.5">
             {berth.berthNumber}
+          </span>
+        </>
+      ) : (
+        <>
+          <span className="font-mono font-black text-sm sm:text-base leading-tight tracking-tight mt-0.5">
+            {berth.berthNumber}
+          </span>
+          <span
+            className={`text-[8px] sm:text-[8.5px] font-extrabold uppercase tracking-tight leading-none mb-0.5 ${
+              isVacant ? 'text-emerald-100' : 'text-slate-500'
+            }`}
+          >
+            {positionLabel}
           </span>
         </>
       )}
@@ -542,6 +545,145 @@ export function CoachMap({
           <div className="flex items-stretch gap-3 shrink-0">
             {bays.map((bay) => {
               const allBerths = bay.berths || [];
+
+              if (isChairCarLayout) {
+                const leftBerths = allBerths.filter(
+                  (b) =>
+                    b.position?.includes('LEFT') ||
+                    (b.berthNumber % 6 >= 1 && b.berthNumber % 6 <= 3)
+                );
+                const rightBerths = allBerths.filter(
+                  (b) =>
+                    b.position?.includes('RIGHT') ||
+                    b.berthNumber % 6 === 4 ||
+                    b.berthNumber % 6 === 5 ||
+                    b.berthNumber % 6 === 0
+                );
+
+                const midLeft = Math.ceil(leftBerths.length / 2);
+                const midRight = Math.ceil(rightBerths.length / 2);
+                const leftBenchA = leftBerths.slice(0, midLeft);
+                const leftBenchB = leftBerths.slice(midLeft);
+                const rightBenchA = rightBerths.slice(0, midRight);
+                const rightBenchB = rightBerths.slice(midRight);
+
+                return (
+                  <div
+                    key={`desktop-bay-${bay.bayNumber}`}
+                    className="flex flex-col justify-between p-2.5 rounded-xl border border-slate-200 bg-slate-50 min-w-[195px] shadow-2xs"
+                  >
+                    {/* Bay Heading */}
+                    <div className="flex items-center justify-between pb-1 mb-1.5 border-b border-slate-200 text-[10.5px]">
+                      <span className="font-bold text-slate-800">
+                        {bay.bayLabel || `Bay ${bay.bayNumber}`}
+                      </span>
+                      <span className="text-[9.5px] font-mono text-slate-500">
+                        Seats {bay.berths?.[0]?.berthNumber} &ndash;{' '}
+                        {bay.berths?.[bay.berths.length - 1]?.berthNumber}
+                      </span>
+                    </div>
+
+                    {/* Top 3-Seat Facing Benches (Above Aisle: Left faces Right) */}
+                    <div className="flex items-center justify-between gap-2 w-full px-0.5">
+                      {/* Left Bench */}
+                      <div className="relative pl-1.5 pr-0.5 py-0.5 shrink-0 flex-1">
+                        <div className="absolute top-0 bottom-0 left-0 w-3 border-l-2 border-y-2 border-slate-300 rounded-l-lg pointer-events-none" />
+                        <div className="flex flex-col gap-1 relative z-1">
+                          {leftBenchA.map((b, idx) => (
+                            <BlueprintSeat
+                              key={b.berthNumber}
+                              berth={b}
+                              orientation="LEFT"
+                              positionLabel={getPositionLabel(b, idx, false, 3, false)}
+                              isVacant={isVacantBerth(b)}
+                              isSelected={selectedBerthNumber === b.berthNumber}
+                              onClick={() => onSelectBerth && onSelectBerth(b)}
+                            />
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Legroom Table */}
+                      <div className="flex flex-col items-center justify-center shrink-0">
+                        <div className="w-1.5 h-14 bg-slate-300 rounded-full shadow-2xs" title="Snack Table" />
+                      </div>
+
+                      {/* Right Bench */}
+                      <div className="relative pr-1.5 pl-0.5 py-0.5 shrink-0 flex-1">
+                        <div className="flex flex-col gap-1 relative z-1">
+                          {leftBenchB.map((b, idx) => (
+                            <BlueprintSeat
+                              key={b.berthNumber}
+                              berth={b}
+                              orientation="RIGHT"
+                              positionLabel={getPositionLabel(b, idx, false, 3, false)}
+                              isVacant={isVacantBerth(b)}
+                              isSelected={selectedBerthNumber === b.berthNumber}
+                              onClick={() => onSelectBerth && onSelectBerth(b)}
+                            />
+                          ))}
+                        </div>
+                        <div className="absolute top-0 bottom-0 right-0 w-3 border-r-2 border-y-2 border-slate-300 rounded-r-lg pointer-events-none" />
+                      </div>
+                    </div>
+
+                    {/* Horizontal Aisle Walkway */}
+                    <div className="flex items-center justify-center my-2 py-0.5 border-y-2 border-dashed border-slate-300 bg-slate-100/50">
+                      <span className="text-[8.5px] font-black text-slate-400 tracking-widest uppercase flex items-center gap-1.5">
+                        <AislePathSvg className="w-3 h-3 text-slate-400" />
+                        AISLE WALKWAY
+                        <AislePathSvg className="w-3 h-3 text-slate-400" />
+                      </span>
+                    </div>
+
+                    {/* Bottom 3-Seat Facing Benches (Below Aisle: Left faces Right) */}
+                    <div className="flex items-center justify-between gap-2 w-full px-0.5">
+                      {/* Left Bench */}
+                      <div className="relative pl-1.5 pr-0.5 py-0.5 shrink-0 flex-1">
+                        <div className="absolute top-0 bottom-0 left-0 w-3 border-l-2 border-y-2 border-slate-300 rounded-l-lg pointer-events-none" />
+                        <div className="flex flex-col gap-1 relative z-1">
+                          {rightBenchA.map((b, idx) => (
+                            <BlueprintSeat
+                              key={b.berthNumber}
+                              berth={b}
+                              orientation="LEFT"
+                              positionLabel={getPositionLabel(b, idx, false, 3, true)}
+                              isVacant={isVacantBerth(b)}
+                              isSelected={selectedBerthNumber === b.berthNumber}
+                              onClick={() => onSelectBerth && onSelectBerth(b)}
+                            />
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Legroom Table */}
+                      <div className="flex flex-col items-center justify-center shrink-0">
+                        <div className="w-1.5 h-14 bg-slate-300 rounded-full shadow-2xs" title="Snack Table" />
+                      </div>
+
+                      {/* Right Bench */}
+                      <div className="relative pr-1.5 pl-0.5 py-0.5 shrink-0 flex-1">
+                        <div className="flex flex-col gap-1 relative z-1">
+                          {rightBenchB.map((b, idx) => (
+                            <BlueprintSeat
+                              key={b.berthNumber}
+                              berth={b}
+                              orientation="RIGHT"
+                              positionLabel={getPositionLabel(b, idx, false, 3, true)}
+                              isVacant={isVacantBerth(b)}
+                              isSelected={selectedBerthNumber === b.berthNumber}
+                              onClick={() => onSelectBerth && onSelectBerth(b)}
+                            />
+                          ))}
+                        </div>
+                        <div className="absolute top-0 bottom-0 right-0 w-3 border-r-2 border-y-2 border-slate-300 rounded-r-lg pointer-events-none" />
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+
+              // Sleeper / 3A / 2A Layout
               const mainBerths = allBerths.filter(
                 (b) => b.berthType !== 'SIDE_LOWER' && b.berthType !== 'SIDE_UPPER'
               );
@@ -561,17 +703,10 @@ export function CoachMap({
                   ? bay.mainRight
                   : mainBerths.slice(Math.ceil(mainBerths.length / 2));
 
-              const benchColsClass =
-                benchA.length === 2
-                  ? 'grid grid-cols-2 gap-1.5'
-                  : benchA.length === 1
-                  ? 'grid grid-cols-1 gap-1.5'
-                  : 'grid grid-cols-3 gap-1.5';
-
               return (
                 <div
                   key={`desktop-bay-${bay.bayNumber}`}
-                  className="flex flex-col justify-between p-2.5 rounded-xl border border-slate-200 bg-slate-50 min-w-[210px] shadow-2xs"
+                  className="flex flex-col justify-between p-2.5 rounded-xl border border-slate-200 bg-slate-50 min-w-[195px] shadow-2xs"
                 >
                   {/* Bay Tag */}
                   <div className="flex items-center justify-between pb-1 mb-1.5 border-b border-slate-200 text-[10.5px]">
@@ -584,17 +719,18 @@ export function CoachMap({
                     </span>
                   </div>
 
-                  {/* Top: Main Compartment (Facing Benches) */}
-                  <div className="flex flex-col items-center gap-1.5 w-full">
-                    {/* Bench A (Top - Facing Forward) */}
-                    <div className="relative pt-1.5 px-0.5 pb-0 w-full">
-                      <div className="absolute top-0 left-0 right-0 h-4 border-t-2 border-x-2 border-slate-300 rounded-t-lg pointer-events-none" />
-                      <div className={`${benchColsClass} relative z-1`}>
+                  {/* Top: Main Compartment (Facing Benches: Left Bench A facing Right Bench B) */}
+                  <div className="flex items-center justify-between gap-2 w-full px-0.5">
+                    {/* Left Bench (Bench A) - Vertically Stacked: WINDOW (top) -> MIDDLE -> AISLE (walkway) */}
+                    <div className="relative pl-1.5 pr-0.5 py-0.5 shrink-0 flex-1">
+                      {/* Left U-Bracket Rail */}
+                      <div className="absolute top-0 bottom-0 left-0 w-3 border-l-2 border-y-2 border-slate-300 rounded-l-lg pointer-events-none" />
+                      <div className="flex flex-col gap-1 relative z-1">
                         {benchA.map((b, idx) => (
                           <BlueprintSeat
                             key={b.berthNumber}
                             berth={b}
-                            orientation="TOP"
+                            orientation="LEFT"
                             positionLabel={getPositionLabel(b, idx, false, benchA.length, false)}
                             isVacant={isVacantBerth(b)}
                             isSelected={selectedBerthNumber === b.berthNumber}
@@ -604,15 +740,20 @@ export function CoachMap({
                       </div>
                     </div>
 
-                    {/* Bench B (Bottom - Facing Backward) */}
+                    {/* Center Legroom & Vertical Snack Table */}
+                    <div className="flex flex-col items-center justify-center shrink-0">
+                      <div className="w-1.5 h-14 bg-slate-300 rounded-full shadow-2xs" title="Snack Table" />
+                    </div>
+
+                    {/* Right Bench (Bench B) - Vertically Stacked: WINDOW (top) -> MIDDLE -> AISLE (walkway) */}
                     {benchB.length > 0 && (
-                      <div className="relative pb-1.5 px-0.5 pt-0 w-full">
-                        <div className={`${benchColsClass} relative z-1`}>
+                      <div className="relative pr-1.5 pl-0.5 py-0.5 shrink-0 flex-1">
+                        <div className="flex flex-col gap-1 relative z-1">
                           {benchB.map((b, idx) => (
                             <BlueprintSeat
                               key={b.berthNumber}
                               berth={b}
-                              orientation="BOTTOM"
+                              orientation="RIGHT"
                               positionLabel={getPositionLabel(b, idx, false, benchB.length, false)}
                               isVacant={isVacantBerth(b)}
                               isSelected={selectedBerthNumber === b.berthNumber}
@@ -620,12 +761,13 @@ export function CoachMap({
                             />
                           ))}
                         </div>
-                        <div className="absolute bottom-0 left-0 right-0 h-4 border-b-2 border-x-2 border-slate-300 rounded-b-lg pointer-events-none" />
+                        {/* Right Inverted U-Bracket Rail */}
+                        <div className="absolute top-0 bottom-0 right-0 w-3 border-r-2 border-y-2 border-slate-300 rounded-r-lg pointer-events-none" />
                       </div>
                     )}
                   </div>
 
-                  {/* Middle: Aisle Corridor Walkway */}
+                  {/* Middle: Horizontal Aisle Corridor Walkway */}
                   <div className="flex items-center justify-center my-2 py-0.5 border-y-2 border-dashed border-slate-300 bg-slate-100/50">
                     <span className="text-[8.5px] font-black text-slate-400 tracking-widest uppercase flex items-center gap-1.5">
                       <AislePathSvg className="w-3 h-3 text-slate-400" />
@@ -634,7 +776,7 @@ export function CoachMap({
                     </span>
                   </div>
 
-                  {/* Bottom: Side Berths */}
+                  {/* Bottom: Side Berths (Side Lower on left, Side Upper on right along bottom wall) */}
                   <div className="grid grid-cols-2 gap-1.5">
                     <div className="relative pt-1.5 px-0.5 pb-0">
                       <div className="absolute top-0 left-0 right-0 h-4 border-t-2 border-x-2 border-slate-300 rounded-t-lg pointer-events-none" />
