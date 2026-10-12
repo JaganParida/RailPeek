@@ -227,6 +227,17 @@ export async function fetchLiveCoachComposition({
       }
 
       const data = await res.json();
+      if (data.error === 'No Record Found') {
+        const resObj = {
+          success: true,
+          coachName: data.coachName || coach,
+          berths: [],
+          isZeroVacancy: true,
+        };
+        setCached(cacheKey, resObj);
+        return resObj;
+      }
+
       if (data.error || !data.bdd) {
         return { success: false, error: data.error || 'No berth data' };
       }
@@ -311,6 +322,16 @@ export async function fetchLiveVacantBerths({
       }
 
       const data = await res.json();
+      if (data.error === 'No Record Found') {
+        const resObj = {
+          success: true,
+          vacantBerths: [],
+          isZeroVacancy: true,
+        };
+        setCached(cacheKey, resObj);
+        return resObj;
+      }
+
       if (data.error || !data.vbd) {
         return { success: false, error: data.error || 'No vacant berths found' };
       }

@@ -20,6 +20,8 @@ const TERMINAL_CLUSTERS = {
   BDTS: ['CSMT', 'MMCT', 'BDTS', 'LTT', 'DR'],
   LTT: ['CSMT', 'MMCT', 'BDTS', 'LTT', 'DR'],
   DR: ['CSMT', 'MMCT', 'BDTS', 'LTT', 'DR'],
+  DBRG: ['DBRG', 'DBRT'],
+  DBRT: ['DBRG', 'DBRT'],
 };
 
 /**

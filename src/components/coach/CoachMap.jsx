@@ -40,7 +40,6 @@ function BlueprintSeat({
     );
   }
 
-  const isTop = orientation === 'TOP';
   const isBottom = orientation === 'BOTTOM';
   const isLeft = orientation === 'LEFT';
   const isRight = orientation === 'RIGHT';
@@ -65,13 +64,19 @@ function BlueprintSeat({
 
   const labelColorClass = isVacant ? 'text-emerald-100' : 'text-slate-500';
 
+  const seatTitle = isVacant
+    ? berth.status === 'PARTIAL_JOURNEY' && berth.availableFrom && berth.availableTo
+      ? `Seat ${berth.berthNumber} (${positionLabel}) - Vacant (${berth.availableFrom} ➔ ${berth.availableTo}, ${berth.coveragePercent || 0}%)`
+      : `Seat ${berth.berthNumber} (${positionLabel}) - Vacant (Available)`
+    : `Seat ${berth.berthNumber} (${positionLabel}) - Booked (Occupied)`;
+
   // Desktop Left Bench: Seat Number on Left (backrest), Label on Right (table / facing right)
   if (isLeft) {
     return (
       <button
         type="button"
         onClick={onClick}
-        title={`Seat ${berth.berthNumber} (${positionLabel}) - ${isVacant ? 'Vacant' : 'Booked'}`}
+        title={seatTitle}
         className={`relative w-full h-[42px] sm:h-[46px] flex flex-row items-center justify-between px-2.5 py-1 transition-all duration-150 select-none cursor-pointer border ${roundedClass} ${colorClass} ${selectedClass}`}
       >
         <span className="font-mono font-black text-sm sm:text-base leading-none tracking-tight">
@@ -92,7 +97,7 @@ function BlueprintSeat({
       <button
         type="button"
         onClick={onClick}
-        title={`Seat ${berth.berthNumber} (${positionLabel}) - ${isVacant ? 'Vacant' : 'Booked'}`}
+        title={seatTitle}
         className={`relative w-full h-[42px] sm:h-[46px] flex flex-row items-center justify-between px-2.5 py-1 transition-all duration-150 select-none cursor-pointer border ${roundedClass} ${colorClass} ${selectedClass}`}
       >
         <span
@@ -112,7 +117,7 @@ function BlueprintSeat({
     <button
       type="button"
       onClick={onClick}
-      title={`Seat ${berth.berthNumber} (${positionLabel}) - ${isVacant ? 'Vacant' : 'Booked'}`}
+      title={seatTitle}
       className={`relative w-full h-[46px] sm:h-[50px] max-w-[76px] mx-auto flex flex-col items-center justify-between py-1 px-0.5 transition-all duration-150 select-none cursor-pointer border ${roundedClass} ${colorClass} ${selectedClass}`}
     >
       {isBottom ? (
@@ -156,7 +161,10 @@ export function CoachMap({
     const map = new Map();
     if (Array.isArray(berths)) {
       for (const b of berths) {
-        if (b && b.berthNumber) map.set(b.berthNumber, b);
+        if (b && b.berthNumber !== undefined) {
+          map.set(Number(b.berthNumber), b);
+          map.set(String(b.berthNumber), b);
+        }
       }
     }
     return map;
@@ -164,10 +172,11 @@ export function CoachMap({
 
   const isVacantBerth = (berth) => {
     if (!berth) return false;
-    const enriched = berthsMap.get(berth.berthNumber) || berth;
+    const num = Number(berth.berthNumber);
+    const enriched = berthsMap.get(num) || berthsMap.get(String(berth.berthNumber)) || berth;
     if (enriched.isVacant === true || enriched.vacant === true || enriched.available === true) return true;
     if (typeof enriched.coveragePercent === 'number' && enriched.coveragePercent > 0) return true;
-    const st = String(enriched.status || '').toUpperCase().trim();
+    const st = String(enriched.status || berth.status || '').toUpperCase().trim();
     if (
       st === 'FULL_JOURNEY' ||
       st === 'PARTIAL_JOURNEY' ||

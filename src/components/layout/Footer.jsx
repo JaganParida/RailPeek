@@ -1,4 +1,5 @@
-import { TrainFront, Shield, Activity, ExternalLink } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { TrainFront, Shield, ExternalLink, Ticket, Compass } from 'lucide-react';
 
 export function Footer() {
   return (
@@ -27,22 +28,33 @@ export function Footer() {
             <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider mb-2">
               Quick Links
             </h4>
-            <ul className="space-y-1.5 text-xs text-slate-600">
+            <ul className="space-y-2 text-xs text-slate-600">
               <li>
-                <a href="/" className="hover:text-[#214488] font-medium transition-colors">
+                <Link
+                  to="/"
+                  className="hover:text-[#214488] font-medium transition-colors inline-flex items-center gap-1.5"
+                >
+                  <TrainFront className="w-3.5 h-3.5 text-slate-400" />
                   Search Trains &amp; Seats
-                </a>
+                </Link>
               </li>
               <li>
-                <a
-                  href="/api/v1/health"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="hover:text-[#214488] inline-flex items-center gap-1 font-medium transition-colors"
+                <Link
+                  to="/pnr"
+                  className="hover:text-[#214488] font-medium transition-colors inline-flex items-center gap-1.5"
                 >
-                  <Activity className="w-3 h-3 text-emerald-500" />
-                  API Health Status
-                </a>
+                  <Ticket className="w-3.5 h-3.5 text-slate-400" />
+                  PNR Status &amp; Prediction
+                </Link>
+              </li>
+              <li>
+                <Link
+                  to="/coach"
+                  className="hover:text-[#214488] font-medium transition-colors inline-flex items-center gap-1.5"
+                >
+                  <Compass className="w-3.5 h-3.5 text-slate-400" />
+                  Coach Layout &amp; Vacancy
+                </Link>
               </li>
             </ul>
           </div>

@@ -14,6 +14,7 @@ import { MOCK_BERTH_OCCUPANCIES } from '../mockData/availability.mock.js';
 import { ApiError } from '../utils/apiResponse.js';
 import { fetchLiveCoachComposition, fetchLiveTrainComposition, fetchLiveVacantBerths } from './irctcLive.service.js';
 import { getTrainRouteStops, resolveJourneyOverlap } from './routeResolver.service.js';
+import { getCachedAvailability } from './availability.service.js';
 
 /**
  * Generates deterministic realistic occupancies if coach is not explicitly hardcoded.
@@ -113,7 +114,12 @@ export async function getCoachVacancy({
   const normClass = travelClass ? travelClass.toUpperCase().trim() : getCoachClass(normCoach);
 
   const provider = getRailwayProvider();
-  let routeData = await provider.getTrainRoute(normTrain);
+  let routeData = null;
+  try {
+    routeData = await provider.getTrainRoute(normTrain);
+  } catch (_e) {
+    // Graceful fallback to route stops database
+  }
 
   if (!routeData || !routeData.route || routeData.route.length === 0) {
     try {
@@ -257,16 +263,9 @@ export async function getCoachVacancy({
         // Fallback if live composition error occurs
       }
 
-      if (secondChartTime && avlRemoteForBooking && Array.isArray(route) && route.length > 0) {
-        const fromIdx = route.findIndex((s) => s.stationCode === fromStation);
-        const remoteIdx = route.findIndex((s) => s.stationCode === avlRemoteForBooking);
-        if (fromIdx !== -1 && remoteIdx !== -1 && fromIdx < remoteIdx) {
-          isBeforeRemote = true;
-        }
-      }
-
+      // 1. Fetch real coach composition from IRCTC
       let liveCoach = { success: false };
-      if (!isBeforeRemote) {
+      try {
         liveCoach = await fetchLiveCoachComposition({
           trainNo: normTrain,
           jDate: journeyDate,
@@ -276,19 +275,58 @@ export async function getCoachVacancy({
           coach: normCoach,
           cls: normClass,
         });
-      }
+      } catch (_e) {}
 
-      if (liveCoach.success && Array.isArray(liveCoach.berths) && liveCoach.berths.length > 0) {
+      // 2. Fetch real class-wise vacant berths from IRCTC (exact endpoint used by find-berths)
+      let liveVacant = { success: false };
+      try {
+        liveVacant = await fetchLiveVacantBerths({
+          trainNo: normTrain,
+          jDate: journeyDate,
+          boardingStation: fromStation,
+          remoteStation,
+          trainSourceStation,
+          cls: normClass,
+        });
+      } catch (_e) {}
+
+      // Extract verified vacant berths for this specific coach
+      const coachVacantBerths = Array.isArray(liveVacant.vacantBerths)
+        ? liveVacant.vacantBerths.filter(
+            (vb) => String(vb.coachName || vb.coach || '').toUpperCase().trim() === normCoach
+          )
+        : [];
+
+      const vacantBerthNums = new Set(
+        coachVacantBerths.map((vb) => Number(vb.berthNumber || vb.berthNo)).filter(Boolean)
+      );
+
+      if (liveCoach.success && liveCoach.isZeroVacancy) {
+        // Authentic IRCTC confirmation: Coach is charted with 0 vacant berths (100% booked)
+        occupancies = {};
+        for (let b = 1; b <= baseBerths.length; b++) {
+          occupancies[b] = [
+            {
+              from: route[0].stationCode,
+              to: route[route.length - 1].stationCode,
+            },
+          ];
+        }
+        isLiveFromIrctc = true;
+      } else if (liveCoach.success && Array.isArray(liveCoach.berths) && liveCoach.berths.length > 0) {
         occupancies = {};
         const liveBerthsList = [];
 
-        // Use authentic berths returned by IRCTC for this coach without artificial truncations
+        // Use authentic berths returned by IRCTC for this coach
         const berthsToProcess = liveCoach.berths;
 
         for (const b of berthsToProcess) {
           const bNum = Number(b.berthNo);
           occupancies[bNum] = [];
-          if (Array.isArray(b.bsd)) {
+
+          const isConfirmedVacant = vacantBerthNums.has(bNum);
+
+          if (!isConfirmedVacant && Array.isArray(b.bsd)) {
             for (const seg of b.bsd) {
               if (seg.occupancy === true) {
                 occupancies[bNum].push({
@@ -349,13 +387,41 @@ export async function getCoachVacancy({
 
         baseBerths = liveBerthsList;
         isLiveFromIrctc = true;
+      } else if (liveVacant.success && (coachVacantBerths.length > 0 || liveVacant.isZeroVacancy)) {
+        // Coach composition endpoint failed, but vacant berths endpoint returned authentic IRCTC data
+        occupancies = {};
+        for (let b = 1; b <= baseBerths.length; b++) {
+          if (vacantBerthNums.has(b)) {
+            const matchingVac = coachVacantBerths.find(
+              (cv) => Number(cv.berthNumber || cv.berthNo) === b
+            );
+            occupancies[b] = [];
+            if (matchingVac && matchingVac.from && matchingVac.to) {
+              if (matchingVac.from !== route[0].stationCode) {
+                occupancies[b].push({ from: route[0].stationCode, to: matchingVac.from });
+              }
+              if (matchingVac.to !== route[route.length - 1].stationCode) {
+                occupancies[b].push({ from: matchingVac.to, to: route[route.length - 1].stationCode });
+              }
+            }
+          } else {
+            occupancies[b] = [
+              {
+                from: route[0].stationCode,
+                to: route[route.length - 1].stationCode,
+              },
+            ];
+          }
+        }
+        isLiveFromIrctc = true;
       }
     } catch (_err) {
       isLiveFromIrctc = false;
     }
 
     if (!isLiveFromIrctc) {
-      if (process.env.NODE_ENV === 'test') {
+      const allowDemoFallback = env.LIVE_PROVIDER_FALLBACK_TO_DEMO === true && process.env.NODE_ENV === 'test';
+      if (allowDemoFallback) {
         occupancies = generateDeterministicOccupancies(
           normTrain,
           normCoach,
@@ -364,76 +430,70 @@ export async function getCoachVacancy({
           baseBerths.length
         );
       } else {
-        // In live IRCTC parity, if the chart is not prepared yet, do NOT fabricate fake berth data.
+        // In production: Return authentic unchart / zero-availability state without fake numbers
         return {
-        trainNumber: normTrain,
-        trainName: train.name,
-        journeyDate,
-        fromStation,
-        fromStationName: journey.fromStop?.stationName || fromStation,
-        toStation,
-        toStationName: journey.toStop?.stationName || toStation,
-        coachId: normCoach,
-        travelClass: normClass,
-        totalBerths: baseBerths.length,
-        totalBays: groupBerthsIntoBays(baseBerths, normClass).length,
-        isChartPrepared: false,
-        chartStatus: 'CHART_NOT_PREPARED',
-        message: `Reservation chart is not prepared yet by IRCTC for Train ${normTrain} on ${journeyDate}. As per Indian Railways rules, the first reservation chart is officially prepared 4 hours before train departure. Please check back 4 hours prior.`,
-        summary: {
+          trainNumber: normTrain,
+          trainName: train.name,
+          journeyDate,
+          fromStation,
+          fromStationName: journey.fromStop?.stationName || fromStation,
+          toStation,
+          toStationName: journey.toStop?.stationName || toStation,
+          coachId: normCoach,
+          travelClass: normClass,
           totalBerths: baseBerths.length,
-          fullJourneyCount: 0,
-          partialCount: 0,
-          unavailableCount: 0,
-          availableTotal: 0,
-          vacancyRate: 0,
-          byType: {
-            '1A': { fullJourney: 0 },
-            '2A': { fullJourney: 0 },
-            '3A': { fullJourney: 0 },
-            'SL': { fullJourney: 0 },
+          totalBays: groupBerthsIntoBays(baseBerths, normClass).length,
+          isChartPrepared: false,
+          chartStatus: 'CHART_NOT_PREPARED',
+          message: `Reservation chart is not prepared yet by IRCTC for Train ${normTrain} on ${journeyDate}.`,
+          summary: {
+            totalBerths: baseBerths.length,
+            fullJourneyCount: 0,
+            partialCount: 0,
+            unavailableCount: baseBerths.length,
+            availableTotal: 0,
+            vacancyRate: 0,
+            byType: {
+              '1A': { fullJourney: 0 },
+              '2A': { fullJourney: 0 },
+              '3A': { fullJourney: 0 },
+              'SL': { fullJourney: 0 },
+            },
           },
-        },
-        bays: groupBerthsIntoBays(
-          baseBerths.map((b) => ({
+          bays: groupBerthsIntoBays(
+            baseBerths.map((b) => ({
+              ...b,
+              status: 'UNAVAILABLE',
+              statusLabel: 'Booked / Unavailable',
+              coveragePercent: 0,
+              occupiedSegments: [],
+              vacantSegments: [],
+            })),
+            normClass
+          ),
+          berths: baseBerths.map((b) => ({
             ...b,
             status: 'UNAVAILABLE',
-            statusLabel: 'Chart Not Prepared',
+            statusLabel: 'Booked / Unavailable',
             coveragePercent: 0,
             occupiedSegments: [],
             vacantSegments: [],
           })),
-          normClass
-        ),
-        berths: baseBerths.map((b) => ({
-          ...b,
-          status: 'UNAVAILABLE',
-          statusLabel: 'Chart Not Prepared',
-          coveragePercent: 0,
-          occupiedSegments: [],
-          vacantSegments: [],
-        })),
-        availableCoaches: getTrainCoaches(normTrain),
-        routeStops: route.map((s) => ({
-          stationCode: s.stationCode,
-          stationName: s.stationName,
-          stopIndex: s.stopIndex,
-          arrival: s.arrival,
-          departure: s.departure,
-          distanceKm: s.distanceKm,
-        })),
-        source: 'live',
-        isDemo: false,
-        isLiveChart: false,
-        fetchedAt: new Date().toISOString(),
-      };
-    }
-  }
-
-    if (isBeforeRemote) {
-      classVacantSummary = {
-        '1A': 0, '2A': 0, '3A': 0, '3E': 0, 'SL': 0,
-      };
+          availableCoaches: getTrainCoaches(normTrain),
+          routeStops: route.map((s) => ({
+            stationCode: s.stationCode,
+            stationName: s.stationName,
+            stopIndex: s.stopIndex,
+            arrival: s.arrival,
+            departure: s.departure,
+            distanceKm: s.distanceKm,
+          })),
+          source: 'live',
+          isDemo: false,
+          isLiveChart: false,
+          fetchedAt: new Date().toISOString(),
+        };
+      }
     }
 
     // Evaluate each berth against the passenger journey segment
@@ -448,15 +508,6 @@ export async function getCoachVacancy({
 
     // Add deterministic suitability rationales
     const enrichedBerths = evaluatedBerths.map((b) => {
-      if (isBeforeRemote) {
-        return {
-          ...b,
-          status: 'UNAVAILABLE',
-          coveragePercent: 0,
-          suitabilityReason: `Online booking closed at Second Chart. Vacant berths handed over to Train TTE till ${avlRemoteForBooking}.`,
-        };
-      }
-
       let suitabilityReason = '';
       if (b.status === 'FULL_JOURNEY') {
         suitabilityReason = `Fully vacant across your entire travel route from ${fromStation} to ${toStation}.`;
@@ -531,11 +582,11 @@ export async function getCoachVacancy({
         vacancyRate,
         byType: {
           ...byType,
-          '1A': { fullJourney: classVacantSummary ? classVacantSummary['1A'] : (normClass === '1A' ? fullJourneyCount : 0) },
-          '2A': { fullJourney: classVacantSummary ? classVacantSummary['2A'] : (normClass === '2A' ? fullJourneyCount : 0) },
-          '3A': { fullJourney: classVacantSummary ? classVacantSummary['3A'] : (normClass === '3A' ? fullJourneyCount : 0) },
-          '3E': { fullJourney: classVacantSummary ? classVacantSummary['3E'] : (normClass === '3E' ? fullJourneyCount : 0) },
-          'SL': { fullJourney: classVacantSummary ? classVacantSummary['SL'] : (normClass === 'SL' ? fullJourneyCount : 0) },
+          '1A': { fullJourney: normClass === '1A' ? fullJourneyCount : (classVacantSummary?.['1A'] ?? 0) },
+          '2A': { fullJourney: normClass === '2A' ? fullJourneyCount : (classVacantSummary?.['2A'] ?? 0) },
+          '3A': { fullJourney: normClass === '3A' ? fullJourneyCount : (classVacantSummary?.['3A'] ?? 0) },
+          '3E': { fullJourney: normClass === '3E' ? fullJourneyCount : (classVacantSummary?.['3E'] ?? 0) },
+          'SL': { fullJourney: normClass === 'SL' ? fullJourneyCount : (classVacantSummary?.['SL'] ?? 0) },
         },
       },
       bays,

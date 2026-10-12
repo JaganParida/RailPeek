@@ -7,6 +7,7 @@ import { fetchLiveTrainComposition, fetchLiveVacantBerths } from './irctcLive.se
 import { fetchLiveTrainsBetweenStations } from './tbsLive.service.js';
 import { getTrainRouteStops, resolveJourneyOverlap } from './routeResolver.service.js';
 import { resolveJourneySegment } from '../engine/segmentEngine.js';
+import { env } from '../config/env.js';
 
 /**
  * Calculates duration in minutes from departure and arrival time strings ("HH:MM").
@@ -878,24 +879,12 @@ export async function findUsableBerths(params) {
           }
         }
 
-        // Anti-Hallucination & Upstream Resilience Policy:
-        // 1. If IRCTC answered legitimately (liveVacant.success: true or data.error: 'No Record Found'),
-        //    respect the genuine IRCTC count (keep 0 vacant berths, never hallucinate fake berths).
-        // 2. If IRCTC upstream failed or was blocked by Akamai (HTTP 403/5xx/cooldown/timeout/network error),
-        //    fall back to deterministic route berth allocator so production does not break with false zeros.
+        // Anti-Hallucination & Upstream Parity Policy:
+        // Always respect genuine IRCTC data. Never hallucinate fake berths in production.
         let isBerthsDemo = false;
-        const isUpstreamNetworkError =
-          !liveVacant ||
-          Boolean(
-            liveVacant.error &&
-              (liveVacant.error.includes('HTTP') ||
-                liveVacant.error.includes('cooldown') ||
-                liveVacant.error.includes('timeout') ||
-                liveVacant.error.includes('fetch') ||
-                liveVacant.error.includes('Access Denied'))
-          );
+        const allowFallback = env.LIVE_PROVIDER_FALLBACK_TO_DEMO === true && process.env.NODE_ENV === 'test';
 
-        if ((process.env.NODE_ENV === 'test' || isUpstreamNetworkError) && liveBerths.length === 0) {
+        if (allowFallback && liveBerths.length === 0) {
           try {
             const fallbackAvail = await getCachedAvailability({
               trainNumber: tNum,
