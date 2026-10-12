@@ -64,6 +64,26 @@ export function TrainBogieStrip({
           {/* Coupler */}
           <div className="w-2 h-1 bg-slate-400 self-center mb-4 shrink-0" />
 
+          {/* Front General Unreserved Coach */}
+          <div className="flex items-center shrink-0">
+            <div className="flex flex-col items-center p-1 opacity-50 cursor-not-allowed select-none" title="General Unreserved Coach">
+              <svg className="w-14 h-9" viewBox="0 0 60 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect x="2" y="4" width="56" height="24" rx="3" fill="#f1f5f9" stroke="#cbd5e1" strokeWidth="1.5" />
+                <rect x="4" y="5" width="52" height="3" rx="1" fill="#94a3b8" />
+                <rect x="7" y="11" width="6" height="6" rx="1" fill="#cbd5e1" />
+                <rect x="17" y="11" width="6" height="6" rx="1" fill="#cbd5e1" />
+                <rect x="27" y="11" width="6" height="6" rx="1" fill="#cbd5e1" />
+                <rect x="37" y="11" width="6" height="6" rx="1" fill="#cbd5e1" />
+                <rect x="47" y="11" width="6" height="6" rx="1" fill="#cbd5e1" />
+                <circle cx="14" cy="30" r="3.5" fill="#334155" stroke="#94a3b8" strokeWidth="1" />
+                <circle cx="46" cy="30" r="3.5" fill="#334155" stroke="#94a3b8" strokeWidth="1" />
+              </svg>
+              <span className="font-mono text-[10px] font-bold text-slate-400 mt-0.5">GEN</span>
+              <span className="text-[8px] font-bold px-1 rounded bg-slate-100 text-slate-400 mt-0.5">Unres</span>
+            </div>
+            <div className="w-1.5 h-0.5 bg-slate-400 self-center mb-4 shrink-0" />
+          </div>
+
           {/* Passenger Coaches Sequence */}
           {coaches.map((coach) => {
             const isActive = activeCoach === coach;
@@ -216,6 +236,26 @@ export function TrainBogieStrip({
               </div>
             );
           })}
+
+          {/* Rear General Unreserved Coach */}
+          <div className="flex items-center shrink-0">
+            <div className="flex flex-col items-center p-1 opacity-50 cursor-not-allowed select-none" title="General Unreserved Coach">
+              <svg className="w-14 h-9" viewBox="0 0 60 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect x="2" y="4" width="56" height="24" rx="3" fill="#f1f5f9" stroke="#cbd5e1" strokeWidth="1.5" />
+                <rect x="4" y="5" width="52" height="3" rx="1" fill="#94a3b8" />
+                <rect x="7" y="11" width="6" height="6" rx="1" fill="#cbd5e1" />
+                <rect x="17" y="11" width="6" height="6" rx="1" fill="#cbd5e1" />
+                <rect x="27" y="11" width="6" height="6" rx="1" fill="#cbd5e1" />
+                <rect x="37" y="11" width="6" height="6" rx="1" fill="#cbd5e1" />
+                <rect x="47" y="11" width="6" height="6" rx="1" fill="#cbd5e1" />
+                <circle cx="14" cy="30" r="3.5" fill="#334155" stroke="#94a3b8" strokeWidth="1" />
+                <circle cx="46" cy="30" r="3.5" fill="#334155" stroke="#94a3b8" strokeWidth="1" />
+              </svg>
+              <span className="font-mono text-[10px] font-bold text-slate-400 mt-0.5">GEN</span>
+              <span className="text-[8px] font-bold px-1 rounded bg-slate-100 text-slate-400 mt-0.5">Unres</span>
+            </div>
+            <div className="w-1.5 h-0.5 bg-slate-400 self-center mb-4 shrink-0" />
+          </div>
 
           {/* Guard Van / SLR at rear */}
           <div className="flex flex-col items-center shrink-0">

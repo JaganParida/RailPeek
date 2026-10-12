@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, ChevronRight, Train } from 'lucide-react';
+import { ArrowRight, ChevronRight, Train, Compass } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { VacantBerthsGrid } from '@/components/results/VacantBerthsGrid';
@@ -91,7 +91,19 @@ export function TrainResultCard({ option, onInspect, onSelectTrain }) {
           Showing verified vacant seats ordered by traveler preference.
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              navigate(`/coach?train=${encodeURIComponent(trainNumber)}&from=${encodeURIComponent(fromStation)}&to=${encodeURIComponent(toStation)}&date=${encodeURIComponent(option.journeyDate || '')}&class=${encodeURIComponent(option.travelClass || '3A')}`);
+            }}
+            className="text-xs font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border-emerald-300"
+            leftIcon={Compass}
+          >
+            View Coach Layout
+          </Button>
+
           <Button
             variant="outline"
             size="sm"

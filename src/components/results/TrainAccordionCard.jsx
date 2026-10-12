@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { ChevronDown, ChevronUp, ShieldCheck, Train, CheckCircle2, Clock } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { ChevronDown, ChevronUp, ShieldCheck, Train, CheckCircle2, Clock, Compass, ChevronRight } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { VacantBerthsGrid } from '@/components/results/VacantBerthsGrid';
@@ -15,6 +16,7 @@ export function TrainAccordionCard({
   selectedClass,
   onSelectClass,
 }) {
+  const navigate = useNavigate();
   const [liveBrowserComp, setLiveBrowserComp] = useState(null);
 
   const trainNumber = train?.trainNumber;
@@ -356,6 +358,29 @@ export function TrainAccordionCard({
               </span>
             </span>
           </div>
+
+          {/* Vacant Coach Layout CTA - ONLY shown when train has vacant seats */}
+          {hasVacancies && (
+            <div className="pt-2 mt-2 flex items-center justify-between border-t border-slate-100 flex-wrap gap-2">
+              <span className="text-[11px] font-semibold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                {totalVacantCount} Vacant {totalVacantCount === 1 ? 'Berth' : 'Berths'} Available
+              </span>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const targetUrl = `/coach?train=${encodeURIComponent(trainNumber)}&from=${encodeURIComponent(fromStation)}&to=${encodeURIComponent(toStation)}&date=${encodeURIComponent(journeyDate || '')}&class=${encodeURIComponent(currentClass)}`;
+                  navigate(targetUrl);
+                }}
+                className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-xs cursor-pointer ml-auto"
+                title={`Open Coach Layout & Seat Map for Train ${trainNumber}`}
+              >
+                <Compass className="w-3.5 h-3.5 text-white" />
+                <span>View Coach Layout</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -369,6 +394,27 @@ export function TrainAccordionCard({
       >
         <div className="overflow-hidden">
           <div className="p-2 sm:p-4 border-t border-slate-200 bg-white">
+            {/* Expanded Coach Map Shortcut Bar */}
+            <div className="flex items-center justify-between p-2.5 mb-3 rounded-lg bg-blue-50/80 border border-blue-200 text-slate-800">
+              <div className="flex items-center gap-2">
+                <Compass className="w-4 h-4 text-blue-600" />
+                <span className="text-xs font-bold text-slate-900">
+                  Interactive Coach Bogie &amp; Seat Layout
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const targetUrl = `/coach?train=${encodeURIComponent(trainNumber)}&from=${encodeURIComponent(fromStation)}&to=${encodeURIComponent(toStation)}&date=${encodeURIComponent(journeyDate || '')}&class=${encodeURIComponent(currentClass)}`;
+                  navigate(targetUrl);
+                }}
+                className="px-3 py-1 rounded-md bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center gap-1 shadow-xs cursor-pointer"
+              >
+                <span>Open Seat Map</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
             <VacantBerthsGrid
               berths={availableBerths}
               allocatedBerths={allocatedBerths}

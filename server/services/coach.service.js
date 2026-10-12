@@ -621,9 +621,6 @@ export async function getTrainCoachesSummary(trainNumber, options = {}) {
     // Composition lookup fallback
   }
 
-  if (!routeData && !liveTrainName && liveCoachesList.length === 0) {
-    throw new ApiError('TRAIN_NOT_FOUND', `Train ${normTrain} was not found on schedule.`, 404);
-  }
 
   const standardCoaches = getTrainCoaches(normTrain);
   const availableCoaches = liveCoachesList.length > 0

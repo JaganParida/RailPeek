@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { DoorClosed, Bath, AlertCircle } from 'lucide-react';
+import { DoorClosed, Bath } from 'lucide-react';
 
 /**
  * Clean SVG Window Icon (Zero Emojis)
@@ -48,42 +48,8 @@ export function CoachMap({
   bays = [],
   selectedBerthNumber,
   onSelectBerth,
-  filterType = 'ALL',
-  filterStatus = 'ALL',
-  onFilterTypeChange,
-  onFilterStatusChange,
-  isChartPrepared = true,
 }) {
   const [hoveredBerth, setHoveredBerth] = useState(null);
-
-  const berthTypeFilters = [
-    { id: 'ALL', label: 'All Berths' },
-    { id: 'LOWER', label: 'Lower (L)' },
-    { id: 'MIDDLE', label: 'Middle (M)', hideFor: ['2A', '1A', '2S', 'CC'] },
-    { id: 'UPPER', label: 'Upper (U)', hideFor: ['2S', 'CC'] },
-    { id: 'SIDE_LOWER', label: 'Side Lower / Window', hideFor: ['1A'] },
-    { id: 'SIDE_UPPER', label: 'Side Upper (SU)', hideFor: ['1A', '2S', 'CC'] },
-  ].filter((f) => !f.hideFor || !f.hideFor.includes(travelClass));
-
-  const statusFilters = [
-    { id: 'ALL', label: 'All Berths' },
-    { id: 'VACANT_ONLY', label: 'Vacant Seats Only (Green)' },
-  ];
-
-  const matchesFilters = (berth) => {
-    if (!berth) return false;
-    if (filterType !== 'ALL' && berth.berthType !== filterType) {
-      if (filterType === 'SIDE_LOWER' && (berth.berthType === 'SIDE_LOWER' || berth.berthType === 'WINDOW')) {
-        // match
-      } else {
-        return false;
-      }
-    }
-    if (filterStatus === 'VACANT_ONLY' && berth.status !== 'FULL_JOURNEY' && berth.status !== 'PARTIAL_JOURNEY') {
-      return false;
-    }
-    return true;
-  };
 
   const isWindowBerth = (berth) => {
     if (!berth) return false;
@@ -125,13 +91,12 @@ export function CoachMap({
 
     const isSelected = selectedBerthNumber === berth.berthNumber;
     const isHovered = hoveredBerth?.berthNumber === berth.berthNumber;
-    const isMatching = matchesFilters(berth);
     const hasWindow = isWindowBerth(berth);
     const isVacant = berth.status === 'FULL_JOURNEY' || berth.status === 'PARTIAL_JOURNEY';
 
-    // Style Rule in Light Mode:
-    // Vacant = Crisp VIBRANT EMERALD GREEN
-    // Others = Clean SOFT LIGHT GRAY
+    // Style Rule:
+    // Vacant = Green
+    // Others = Gray
     let bgClasses = 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200/80 hover:border-slate-300';
     let labelColor = 'text-slate-400';
     let statusText = 'Booked';
@@ -148,8 +113,6 @@ export function CoachMap({
       statusText = `${berth.coveragePercent || 'Part'}%`;
     }
 
-    const opacityClass = isMatching ? 'opacity-100' : 'opacity-30 hover:opacity-70';
-
     return (
       <button
         key={berth.berthNumber}
@@ -158,7 +121,7 @@ export function CoachMap({
         onMouseEnter={() => setHoveredBerth(berth)}
         onMouseLeave={() => setHoveredBerth(null)}
         title={`Seat ${berth.berthNumber} (${getBerthTypeLabel(berth)}) - ${statusText}`}
-        className={`relative flex flex-col justify-between p-1.5 sm:p-2 rounded-xl border text-center transition-all cursor-pointer select-none ${bgClasses} ${opacityClass} ${
+        className={`relative flex flex-col justify-between p-1.5 sm:p-2 rounded-xl border text-center transition-all cursor-pointer select-none ${bgClasses} ${
           compact ? 'min-h-[50px]' : 'min-h-[58px]'
         } ${
           isSelected
@@ -210,64 +173,6 @@ export function CoachMap({
 
   return (
     <div className="space-y-3.5">
-      {/* Notice if chart is not officially prepared */}
-      {!isChartPrepared && (
-        <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 flex items-start gap-2.5 text-xs shadow-xs">
-          <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-          <div className="leading-relaxed">
-            <strong className="block text-amber-900 font-bold">
-              IRCTC Reservation Chart Opens 4 Hours Prior to Departure
-            </strong>
-            <span className="text-amber-700 text-[11px]">
-              Displaying exact physical coach layout for {coachId} ({travelClass}). Window seats and berth positions below are 100% verified.
-            </span>
-          </div>
-        </div>
-      )}
-
-      {/* Filter Toolbar (Berth Type & Vacant Only) in Clean Light Mode */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2.5 rounded-xl bg-white border border-slate-200 shadow-xs text-slate-700">
-        <div className="flex flex-wrap items-center gap-1">
-          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mr-1 select-none">
-            Berth Type:
-          </span>
-          {berthTypeFilters.map((f) => (
-            <button
-              key={f.id}
-              type="button"
-              onClick={() => onFilterTypeChange && onFilterTypeChange(f.id)}
-              className={`px-2 py-0.5 text-[11px] rounded-lg font-bold transition-colors cursor-pointer border ${
-                filterType === f.id
-                  ? 'bg-blue-600 border-blue-600 text-white shadow-xs'
-                  : 'bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200'
-              }`}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
-
-        <div className="flex flex-wrap items-center gap-1 pt-1 sm:pt-0 border-t sm:border-t-0 border-slate-100">
-          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mr-1 select-none">
-            Filter:
-          </span>
-          {statusFilters.map((f) => (
-            <button
-              key={f.id}
-              type="button"
-              onClick={() => onFilterStatusChange && onFilterStatusChange(f.id)}
-              className={`px-2 py-0.5 text-[11px] rounded-lg font-bold transition-colors cursor-pointer border ${
-                filterStatus === f.id
-                  ? 'bg-emerald-600 border-emerald-600 text-white shadow-xs'
-                  : 'bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200'
-              }`}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
       {/* Coach Exterior Housing (Crisp Light Theme Train Carriage) */}
       <div className="rounded-2xl border-2 border-slate-200 bg-white p-3 sm:p-5 shadow-xs">
         {/* Coach Header Banner */}

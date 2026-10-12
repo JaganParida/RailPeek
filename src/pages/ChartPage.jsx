@@ -37,9 +37,6 @@ export function ChartPage() {
   const toStation = initialTo;
   const selectedDate = initialDate;
 
-  // Filters state
-  const [filterType, setFilterType] = useState('ALL');
-  const [filterStatus, setFilterStatus] = useState('ALL');
 
   // Sync to URL params when parameters change
   useEffect(() => {
@@ -297,11 +294,6 @@ export function ChartPage() {
             bays={coachData.bays || []}
             selectedBerthNumber={selectedBerthNumber}
             onSelectBerth={(b) => setSelectedBerthNumber(b.berthNumber)}
-            filterType={filterType}
-            filterStatus={filterStatus}
-            onFilterTypeChange={setFilterType}
-            onFilterStatusChange={setFilterStatus}
-            isChartPrepared={coachData.isChartPrepared !== false}
           />
         )}
 
