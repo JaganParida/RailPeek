@@ -598,35 +598,22 @@ export function VacantBerthsGrid({
                             {/* Bounded Scrollable Seat Container (Internal scroll, never overflows container) */}
                             <div className="max-h-[165px] sm:max-h-[180px] overflow-y-auto scrollbar-thin pr-0.5">
                               {seatList.length === 1 ? (
-                                <div className="p-2 sm:px-3 sm:py-2.5 rounded-lg bg-white border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-                                  <div className="flex items-center gap-2.5 min-w-0">
-                                    <button
-                                      type="button"
-                                      key={`seat-${seatList[0].coach}-${seatList[0].berthNumber}-0`}
-                                      onClick={() => handleSelectSeat(segKey, seatList[0])}
-                                      title={`Seat ${seatList[0].coach}-${seatList[0].berthNumber} (${resolveBerthMeta(seatList[0]).label})`}
-                                      className="px-2.5 py-1.5 rounded-lg text-xs font-mono font-bold flex items-center gap-1.5 bg-slate-900 text-white border-slate-900 shadow-xs ring-1 ring-slate-900 cursor-pointer shrink-0"
-                                    >
-                                      <Check className="w-3 h-3 text-emerald-400 shrink-0" />
-                                      <span className="font-mono text-xs font-bold tracking-tight whitespace-nowrap">
-                                        {seatList[0].coach}-{seatList[0].berthNumber}
-                                      </span>
-                                      <span className="text-[9px] font-sans font-bold px-1.5 py-0.5 rounded border bg-slate-800 text-slate-200 border-slate-700 whitespace-nowrap leading-none">
-                                        {resolveBerthMeta(seatList[0]).short}
-                                      </span>
-                                    </button>
-                                    <div className="min-w-0">
-                                      <div className="text-xs font-bold text-slate-900">
-                                        {resolveBerthMeta(seatList[0]).label} Berth
-                                      </div>
-                                      <div className="text-[11px] text-slate-500 font-medium truncate">
-                                        Confirmed berth for this segment
-                                      </div>
-                                    </div>
-                                  </div>
-                                  <span className="text-[10px] sm:text-[11px] font-semibold text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded-md border border-emerald-200 self-start sm:self-auto shrink-0 whitespace-nowrap">
-                                    Confirmed Seat
-                                  </span>
+                                <div className="flex items-center">
+                                  <button
+                                    type="button"
+                                    key={`seat-${seatList[0].coach}-${seatList[0].berthNumber}-0`}
+                                    onClick={() => handleSelectSeat(segKey, seatList[0])}
+                                    title={`Seat ${seatList[0].coach}-${seatList[0].berthNumber} (${resolveBerthMeta(seatList[0]).label})`}
+                                    className="px-2.5 py-1.5 rounded-lg text-xs font-mono font-bold flex items-center gap-1.5 bg-slate-900 text-white border-slate-900 shadow-xs ring-1 ring-slate-900 cursor-pointer shrink-0"
+                                  >
+                                    <Check className="w-3 h-3 text-emerald-400 shrink-0" />
+                                    <span className="font-mono text-xs font-bold tracking-tight whitespace-nowrap">
+                                      {seatList[0].coach}-{seatList[0].berthNumber}
+                                    </span>
+                                    <span className="text-[9px] font-sans font-bold px-1.5 py-0.5 rounded border bg-slate-800 text-slate-200 border-slate-700 whitespace-nowrap leading-none">
+                                      {resolveBerthMeta(seatList[0]).short}
+                                    </span>
+                                  </button>
                                 </div>
                               ) : (
                                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 sm:gap-2">
