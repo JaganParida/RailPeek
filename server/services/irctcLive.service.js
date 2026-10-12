@@ -95,10 +95,12 @@ export async function fetchLiveTrainComposition(trainNo, jDate, boardingStation)
       if (!res.ok) {
         const errText = await res.text().catch(() => '');
         console.error(`[IRCTC Live] HTTP ${res.status} ${res.statusText}: ${errText.slice(0, 200)}`);
-        if (res.status === 429) {
-          triggerRateLimitCooldown(30);
+        if (res.status === 429 || res.status === 403) {
+          triggerRateLimitCooldown(60);
         }
-        return { success: false, error: `HTTP ${res.status}: ${errText.slice(0, 150)}` };
+        const resObj = { success: false, isPrepared: false, error: `HTTP ${res.status}: ${errText.slice(0, 150)}` };
+        setCached(cacheKey, resObj, FAILURE_CACHE_TTL_MS);
+        return resObj;
       }
 
       const data = await res.json();
@@ -283,8 +285,10 @@ export async function fetchLiveVacantBerths({
       });
 
       if (!res.ok) {
-        if (res.status === 429) triggerRateLimitCooldown(30);
-        return { success: false, error: `HTTP ${res.status}` };
+        if (res.status === 429 || res.status === 403) triggerRateLimitCooldown(60);
+        const resObj = { success: false, error: `HTTP ${res.status}` };
+        setCached(cacheKey, resObj, FAILURE_CACHE_TTL_MS);
+        return resObj;
       }
 
       const data = await res.json();

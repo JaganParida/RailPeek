@@ -364,8 +364,8 @@ export function computeConnectedItinerary({
         distanceKm: gapDist,
         isShortGap,
         tip: isShortGap
-          ? `Short stretch (~${gapDist} km). You can stay on current berth / coach vestibule until next passenger arrives, or consult on-train TTE.`
-          : `Unreserved stretch (~${gapDist} km). Speak to Train TTE upon boarding for on-board berth reallocation, or use General coach.`,
+          ? `Short gap without seat (~${gapDist} km): You can remain sitting if the berth stays empty, or ask the on-train TTE for an available seat.`
+          : `Unreserved stretch (~${gapDist} km): Speak with the on-train TTE to allocate an empty berth, or travel in the General compartment.`,
       });
     } else if (prevSeg && prevSeg.to === seg.from) {
       // Seamless station switch

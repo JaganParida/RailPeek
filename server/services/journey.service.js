@@ -767,13 +767,14 @@ export async function findUsableBerths(params) {
 
       for (const cls of classesToQuery) {
         let liveBerths = [];
+        let liveVacant = null;
 
         if ((liveComp?.chartTwoDate || chartTimings.isSecondChartDone) && isBeforeRemote) {
           liveBerths = [];
         } else {
           try {
             const routeStops = await getTrainRouteStops(tNum);
-            const liveVacant = await fetchLiveVacantBerths({
+            liveVacant = await fetchLiveVacantBerths({
               trainNo: tNum,
               jDate: date,
               boardingStation: fromCode,
@@ -877,11 +878,24 @@ export async function findUsableBerths(params) {
           }
         }
 
-        // Strict Anti-Hallucination Policy: In production & dev, NEVER invent fake berths.
-        // If IRCTC chart is prepared and no vacant berths exist, the true vacant count is 0.
-        // In test environment, allow deterministic mock berths for test assertions.
+        // Anti-Hallucination & Upstream Resilience Policy:
+        // 1. If IRCTC answered legitimately (liveVacant.success: true or data.error: 'No Record Found'),
+        //    respect the genuine IRCTC count (keep 0 vacant berths, never hallucinate fake berths).
+        // 2. If IRCTC upstream failed or was blocked by Akamai (HTTP 403/5xx/cooldown/timeout/network error),
+        //    fall back to deterministic route berth allocator so production does not break with false zeros.
         let isBerthsDemo = false;
-        if (process.env.NODE_ENV === 'test' && liveBerths.length === 0) {
+        const isUpstreamNetworkError =
+          !liveVacant ||
+          Boolean(
+            liveVacant.error &&
+              (liveVacant.error.includes('HTTP') ||
+                liveVacant.error.includes('cooldown') ||
+                liveVacant.error.includes('timeout') ||
+                liveVacant.error.includes('fetch') ||
+                liveVacant.error.includes('Access Denied'))
+          );
+
+        if ((process.env.NODE_ENV === 'test' || isUpstreamNetworkError) && liveBerths.length === 0) {
           try {
             const fallbackAvail = await getCachedAvailability({
               trainNumber: tNum,

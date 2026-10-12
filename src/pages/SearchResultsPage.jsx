@@ -9,7 +9,6 @@ import {
   ArrowUpDown,
   LayoutGrid,
   Clock,
-  CheckCircle2,
   ChevronDown,
   ChevronUp,
   Calendar,
@@ -600,60 +599,60 @@ export function SearchResultsPage() {
 
         {/* Filter and Sort Toolbar (Only shown when operating trains exist on route) */}
         {!isError && (allDisplayTrains.length > 0 || isLoading) && (
-          <div className="p-2.5 sm:p-3.5 rounded-xl bg-white border border-slate-300 flex flex-col md:flex-row md:items-center justify-between gap-2.5 sm:gap-3 text-xs">
-            {/* Top Row on Mobile: Class Selector + Sort Dropdown */}
-            <div className="flex items-center justify-between sm:justify-start gap-2 sm:gap-4 flex-wrap">
-              {/* Class Filter Segmented Control */}
-              <div className="flex items-center gap-1.5 sm:gap-2">
-                <span className="font-bold text-slate-700 flex items-center gap-1 select-none text-[11px] sm:text-xs">
-                  <Filter className="w-3.5 h-3.5 text-slate-500" />
-                  <span className="hidden xs:inline">Class:</span>
-                </span>
-                <div className="inline-flex p-0.5 bg-slate-100 rounded-lg border border-slate-300">
-                  {['SL', '3A', '2A', '1A', '2S', 'CC'].map((cls) => {
-                    const isCurrent = activeDisplayClass === cls;
-                    const isThisLoading = isTabLoading && isCurrent;
-                    const count = routeClassVacancyTotals[cls] || 0;
-                    return (
-                      <button
-                        key={cls}
-                        type="button"
-                        disabled={isTabLoading}
-                        onClick={() => handleSelectClass(cls)}
-                        className={`px-2.5 py-1 rounded-md font-bold text-xs transition-all flex items-center gap-1.5 select-none ${
-                          isCurrent
-                            ? 'bg-[#1e3a8a] text-white border border-[#1e3a8a]'
-                            : 'text-slate-600 hover:text-slate-900 border border-transparent'
-                        } ${isTabLoading ? 'cursor-wait opacity-90' : 'cursor-pointer'}`}
-                      >
-                        {isThisLoading && (
-                          <Loader2 className="w-3 h-3 animate-spin shrink-0 text-white" />
-                        )}
-                        <span>{cls}</span>
-                        {count > 0 && (
-                          <span
-                            className={`text-[10px] px-1.5 py-0.2 rounded-full font-extrabold ${
-                              isCurrent
-                                ? 'bg-emerald-400 text-slate-950'
-                                : 'bg-emerald-100 text-emerald-800'
-                            }`}
-                          >
-                            {count}
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
+          <div className="p-2 sm:p-3 rounded-xl bg-white border border-slate-300 flex flex-col md:flex-row md:items-center justify-between gap-2 sm:gap-3 text-xs overflow-hidden shadow-2xs">
+            {/* Row 1 on Mobile: Class Selector (Full width, grid-cols-6 on mobile, no scrollbar, zero overflow) */}
+            <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 max-w-full w-full md:w-auto">
+              <span className="hidden sm:flex font-bold text-slate-700 items-center gap-1 select-none text-[11px] sm:text-xs shrink-0">
+                <Filter className="w-3.5 h-3.5 text-slate-500" />
+                <span>Class:</span>
+              </span>
+              <div className="grid grid-cols-6 sm:flex sm:items-center gap-1 p-0.5 bg-slate-100 rounded-lg border border-slate-300 w-full sm:w-auto">
+                {['SL', '3A', '2A', '1A', '2S', 'CC'].map((cls) => {
+                  const isCurrent = activeDisplayClass === cls;
+                  const isThisLoading = isTabLoading && isCurrent;
+                  const count = routeClassVacancyTotals[cls] || 0;
+                  return (
+                    <button
+                      key={cls}
+                      type="button"
+                      disabled={isTabLoading}
+                      onClick={() => handleSelectClass(cls)}
+                      className={`py-1 px-1 sm:px-2.5 rounded-md font-bold text-xs transition-all flex items-center justify-center gap-1 select-none ${
+                        isCurrent
+                          ? 'bg-[#1e3a8a] text-white border border-[#1e3a8a] shadow-xs'
+                          : 'text-slate-600 hover:text-slate-900 border border-transparent hover:bg-slate-200/60'
+                      } ${isTabLoading ? 'cursor-wait opacity-90' : 'cursor-pointer'}`}
+                    >
+                      {isThisLoading && (
+                        <Loader2 className="w-3 h-3 animate-spin shrink-0 text-white" />
+                      )}
+                      <span>{cls}</span>
+                      {count > 0 && (
+                        <span
+                          className={`text-[9.5px] sm:text-[10px] px-1 sm:px-1.5 py-0.2 rounded-full font-extrabold leading-none ${
+                            isCurrent
+                              ? 'bg-emerald-400 text-slate-950'
+                              : 'bg-emerald-100 text-emerald-800'
+                          }`}
+                        >
+                          {count}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
+            </div>
 
+            {/* Row 2 on Mobile / Right Group on Desktop: Sort Dropdown + Compare Trains */}
+            <div className="flex items-center justify-between gap-2 pt-1.5 md:pt-0 border-t md:border-t-0 border-slate-100 w-full md:w-auto shrink-0">
               {/* Sort Dropdown */}
-              <div className="flex items-center gap-1 bg-slate-50 border border-slate-300 rounded-lg px-2 py-1">
-                <ArrowUpDown className="w-3 h-3 text-slate-500 shrink-0" />
+              <div className="flex-1 sm:flex-initial flex items-center gap-1.5 bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 sm:py-1">
+                <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 shrink-0" />
                 <select
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value)}
-                  className="bg-transparent text-[11px] sm:text-xs text-slate-700 font-bold focus:outline-none cursor-pointer"
+                  className="bg-transparent text-xs text-slate-700 font-bold focus:outline-none cursor-pointer w-full sm:w-auto"
                   aria-label="Sort options"
                 >
                   <option value="BEST_MATCH">Best Match</option>
@@ -662,59 +661,15 @@ export function SearchResultsPage() {
                   <option value="COVERAGE">Max Vacant</option>
                 </select>
               </div>
-            </div>
-
-            {/* Bottom Row on Mobile: Direct Journey Toggle + Compare Trains */}
-            <div className="flex items-center gap-2 pt-2 md:pt-0 border-t md:border-t-0 border-slate-100 flex-wrap">
-              {/* Direct Journey Only Toggle Pill */}
-              <button
-                type="button"
-                disabled={!hasAnyDirectTrains}
-                onClick={() => {
-                  if (hasAnyDirectTrains) {
-                    setFullJourneyOnly(!fullJourneyOnly);
-                  }
-                }}
-                title={
-                  !hasAnyDirectTrains
-                    ? 'No direct continuous berths available today on this route'
-                    : fullJourneyOnly
-                    ? 'Show all operating trains'
-                    : 'Filter to only trains with direct continuous berths'
-                }
-                className={`flex-1 sm:flex-initial px-2.5 py-1.5 rounded-lg border text-[11px] sm:text-xs font-bold transition-all flex items-center justify-center gap-1.5 select-none ${
-                  !hasAnyDirectTrains
-                    ? 'bg-slate-100 text-slate-400 border-slate-300 cursor-not-allowed opacity-60'
-                    : fullJourneyOnly
-                    ? 'bg-emerald-50 text-emerald-800 border-emerald-400 cursor-pointer'
-                    : 'bg-white text-slate-700 border-slate-300 hover:border-slate-400 cursor-pointer'
-                }`}
-              >
-                <CheckCircle2
-                  className={`w-3.5 h-3.5 ${
-                    !hasAnyDirectTrains
-                      ? 'text-slate-300'
-                      : fullJourneyOnly
-                      ? 'text-emerald-600'
-                      : 'text-slate-400'
-                  }`}
-                />
-                <span>Direct Only</span>
-                {!hasAnyDirectTrains && (
-                  <span className="text-[10px] font-semibold px-1 py-0.2 rounded bg-slate-200 text-slate-600">
-                    0
-                  </span>
-                )}
-              </button>
 
               {/* Matrix Comparison Modal Toggle */}
               {crossTrains.length > 0 && (
                 <button
                   type="button"
                   onClick={() => setShowMatrix(!showMatrix)}
-                  className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white border border-slate-300 text-slate-700 text-[11px] sm:text-xs font-bold hover:bg-slate-50 hover:border-slate-400 transition-colors cursor-pointer whitespace-nowrap"
+                  className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-slate-300 text-slate-700 text-xs font-bold hover:bg-slate-50 hover:border-slate-400 transition-colors cursor-pointer whitespace-nowrap shadow-2xs"
                 >
-                  <LayoutGrid className="w-3.5 h-3.5 text-slate-500" />
+                  <LayoutGrid className="w-3.5 h-3.5 text-slate-500 shrink-0" />
                   <span>{showMatrix ? 'Hide Matrix' : 'Compare Trains'}</span>
                 </button>
               )}

@@ -289,15 +289,18 @@ export function VacantBerthsGrid({
 
         let nodeType = 'START';
         let nodeLabel = 'Boarding';
+        let shortLabel = 'Board';
         let hasSwitchNotice = false;
 
         if (!isFirst) {
           if (prev && prev.type === 'GAP') {
             nodeType = 'GAP_RESUME';
             nodeLabel = 'Seat Resumes';
+            shortLabel = 'Resumes';
           } else {
             nodeType = 'SWITCH';
             nodeLabel = 'Switch';
+            shortLabel = 'Switch';
             hasSwitchNotice = true;
           }
         }
@@ -308,6 +311,7 @@ export function VacantBerthsGrid({
           stepNumber: currentStep++,
           stationCode: it.from,
           stationLabel: nodeLabel,
+          shortLabel,
           nodeType,
           hasSwitchNotice,
           isGapTrack: false,
@@ -319,6 +323,7 @@ export function VacantBerthsGrid({
           type: 'GAP',
           stationCode: it.from,
           stationLabel: 'No Seat',
+          shortLabel: 'No Seat',
           nodeType: 'GAP_START',
           isGapTrack: true,
           item: it,
@@ -333,6 +338,7 @@ export function VacantBerthsGrid({
       type: 'DESTINATION',
       stationCode: destCode,
       stationLabel: 'Destination',
+      shortLabel: 'Arrival',
       nodeType: 'END',
       isGapTrack: false,
       item: null,
@@ -441,36 +447,39 @@ export function VacantBerthsGrid({
         <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-2xs">
 
           {/* Top Summary Strip: Clean neutral light mode, Total Seats, Coverage & Switches */}
-          <div className="px-3 sm:px-4 py-2.5 sm:py-3 bg-slate-50/80 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-md bg-slate-900 flex items-center justify-center shrink-0">
-                <Route className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-white" />
+          <div className="px-3 sm:px-4 py-2.5 sm:py-3 bg-slate-50/80 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 overflow-hidden">
+            <div className="flex items-center justify-between sm:justify-start gap-2 min-w-0">
+              <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+                <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-md bg-slate-900 flex items-center justify-center shrink-0">
+                  <Route className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-white" />
+                </div>
+                <span className="text-xs sm:text-sm font-bold text-slate-900 whitespace-nowrap">
+                  {connectedItinerary.isDirect
+                    ? 'Direct Journey'
+                    : 'Connected Journey'}
+                </span>
               </div>
-              <span className="text-xs sm:text-sm font-bold text-slate-900 whitespace-nowrap">
-                {connectedItinerary.isDirect
-                  ? 'Direct Journey'
-                  : 'Connected Journey'}
-              </span>
-              <span className="text-[10px] sm:text-[11px] font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 whitespace-nowrap">
-                {totalSeatsAcrossJourney} {totalSeatsAcrossJourney === 1 ? 'seat available' : 'total seats available'}
+              <span className="text-[10px] sm:text-[11px] font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 whitespace-nowrap shrink-0">
+                <span className="sm:hidden">{totalSeatsAcrossJourney} {totalSeatsAcrossJourney === 1 ? 'seat' : 'seats'}</span>
+                <span className="hidden sm:inline">{totalSeatsAcrossJourney} {totalSeatsAcrossJourney === 1 ? 'seat available' : 'total seats available'}</span>
               </span>
             </div>
 
-            {/* Mobile: Horizontal scrollable stat pills | Desktop: flex wrap */}
-            <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none pb-0.5 sm:pb-0 text-[10px] sm:text-[11px] shrink-0">
+            {/* Stat Pills: Clean wrap on mobile, zero scrollbars, zero clipping */}
+            <div className="flex items-center gap-1.5 flex-wrap text-[10px] sm:text-[11px]">
               {connectedItinerary.totalCoveredKm > 0 && (
-                <span className="px-2 py-0.5 rounded-md font-semibold bg-white text-slate-700 border border-slate-200 whitespace-nowrap shrink-0">
+                <span className="px-2 py-0.5 rounded-md font-semibold bg-white text-slate-700 border border-slate-200 whitespace-nowrap">
                   {connectedItinerary.totalCoveredKm} km confirmed
                   {connectedItinerary.coveragePercent > 0 && ` (${connectedItinerary.coveragePercent}%)`}
                 </span>
               )}
               {connectedItinerary.totalSwitches > 0 && (
-                <span className="px-2 py-0.5 rounded-md font-semibold bg-white text-slate-700 border border-slate-200 whitespace-nowrap shrink-0">
+                <span className="px-2 py-0.5 rounded-md font-semibold bg-white text-slate-700 border border-slate-200 whitespace-nowrap">
                   {connectedItinerary.totalSwitches} seat {connectedItinerary.totalSwitches === 1 ? 'switch' : 'switches'}
                 </span>
               )}
               {connectedItinerary.hasGaps && (
-                <span className="px-2 py-0.5 rounded-md font-semibold bg-amber-50 text-amber-800 border border-amber-200 inline-flex items-center gap-1 whitespace-nowrap shrink-0">
+                <span className="px-2 py-0.5 rounded-md font-semibold bg-amber-50 text-amber-800 border border-amber-200 inline-flex items-center gap-1 whitespace-nowrap">
                   <AlertTriangle className="w-3 h-3 text-amber-600 shrink-0" />
                   <span>{gapCount} unreserved gap{gapCount > 1 ? 's' : ''}</span>
                   <span className="sr-only">Transit Stretch</span>
@@ -480,7 +489,7 @@ export function VacantBerthsGrid({
           </div>
 
           {/* Vertical Journey Route Timeline with Left Station Locator Nodes */}
-          <div className="p-3 sm:p-5 bg-white">
+          <div className="p-2 sm:p-4 bg-white">
             <div className="space-y-0">
               {journeyStages.map((stage, idx) => {
                 const segKey = stage.item ? `seat-${idx}-${stage.item.from}-${stage.item.to}` : '';
@@ -495,9 +504,9 @@ export function VacantBerthsGrid({
                 const safeCurrentPage = Math.min(Math.max(1, currentPage), totalPages);
 
                 return (
-                  <div key={stage.id} className="flex items-stretch gap-2.5 sm:gap-4 group">
+                  <div key={stage.id} className="flex items-stretch gap-2 sm:gap-4 group">
                     {/* Left Vertical Route Locator Column */}
-                    <div className="w-9 sm:w-16 shrink-0 flex flex-col items-center">
+                    <div className="w-10 sm:w-14 shrink-0 flex flex-col items-center">
                       {/* Station Node Circle matching the exact ribbon styling */}
                       <div
                         className={`w-5 h-5 sm:w-6 sm:h-6 rounded-full flex items-center justify-center text-[9px] sm:text-[10px] font-bold border shrink-0 transition-all ${
@@ -527,8 +536,9 @@ export function VacantBerthsGrid({
                       </span>
 
                       {/* Station Sub-label */}
-                      <span className="text-[8px] sm:text-[9px] font-semibold text-slate-500 mt-0.5 leading-tight text-center capitalize max-w-[40px] sm:max-w-none truncate sm:overflow-visible">
-                        {stage.stationLabel}
+                      <span className="text-[8px] sm:text-[9px] font-semibold text-slate-500 mt-0.5 leading-tight text-center w-full break-words">
+                        <span className="sm:hidden">{stage.shortLabel || stage.stationLabel}</span>
+                        <span className="hidden sm:inline">{stage.stationLabel}</span>
                       </span>
 
                       {/* Continuous connecting track line down to next node */}
@@ -586,74 +596,110 @@ export function VacantBerthsGrid({
                           {/* Unified Responsive Seat Deck: Mobile 2-col, Desktop 4-col with In-Container Pagination */}
                           <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-2 sm:p-2.5 space-y-2">
                             {/* Bounded Scrollable Seat Container (Internal scroll, never overflows container) */}
-                            <div className="max-h-[160px] sm:max-h-[175px] overflow-y-auto scrollbar-thin pr-0.5">
-                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 sm:gap-2">
-                                {seatList.map((b, bIdx) => {
-                                  const pageOfThisSeat = Math.floor(bIdx / SEATS_PAGE_SIZE) + 1;
-                                  const isVisibleOnCurrentPage = pageOfThisSeat === safeCurrentPage;
-                                  const meta = resolveBerthMeta(b);
-                                  const isSelected = chosenSeat?.coach === b.coach && chosenSeat?.berthNumber === b.berthNumber;
-
-                                  return (
+                            <div className="max-h-[165px] sm:max-h-[180px] overflow-y-auto scrollbar-thin pr-0.5">
+                              {seatList.length === 1 ? (
+                                <div className="p-2 sm:px-3 sm:py-2.5 rounded-lg bg-white border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                                  <div className="flex items-center gap-2.5 min-w-0">
                                     <button
                                       type="button"
-                                      key={`seat-${b.coach}-${b.berthNumber}-${bIdx}`}
-                                      onClick={() => handleSelectSeat(segKey, b)}
-                                      title={`Seat ${b.coach}-${b.berthNumber} (${meta.label})`}
-                                      style={{ display: isVisibleOnCurrentPage ? undefined : 'none' }}
-                                      className={`px-2 sm:px-2.5 py-1.5 rounded-lg text-xs font-mono font-bold flex items-center justify-between border transition-all cursor-pointer ${
-                                        isSelected
-                                          ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
-                                          : 'bg-white text-slate-800 border-slate-200 hover:border-slate-400 hover:bg-slate-50'
-                                      }`}
+                                      key={`seat-${seatList[0].coach}-${seatList[0].berthNumber}-0`}
+                                      onClick={() => handleSelectSeat(segKey, seatList[0])}
+                                      title={`Seat ${seatList[0].coach}-${seatList[0].berthNumber} (${resolveBerthMeta(seatList[0]).label})`}
+                                      className="px-2.5 py-1.5 rounded-lg text-xs font-mono font-bold flex items-center gap-1.5 bg-slate-900 text-white border-slate-900 shadow-xs ring-1 ring-slate-900 cursor-pointer shrink-0"
                                     >
-                                      <div className="flex items-center gap-1 min-w-0">
-                                        {isSelected && <Check className="w-3 h-3 text-emerald-400 shrink-0" />}
-                                        <span className="truncate">{`${b.coach}-${b.berthNumber}`}</span>
-                                      </div>
-                                      <span
-                                        className={`text-[9px] font-sans font-bold px-1.5 py-0.2 rounded border shrink-0 ${
-                                          isSelected
-                                            ? 'bg-slate-800 text-slate-200 border-slate-700'
-                                            : meta.badgeClass
-                                        }`}
-                                      >
-                                        {meta.short}
+                                      <Check className="w-3 h-3 text-emerald-400 shrink-0" />
+                                      <span className="font-mono text-xs font-bold tracking-tight whitespace-nowrap">
+                                        {seatList[0].coach}-{seatList[0].berthNumber}
+                                      </span>
+                                      <span className="text-[9px] font-sans font-bold px-1.5 py-0.5 rounded border bg-slate-800 text-slate-200 border-slate-700 whitespace-nowrap leading-none">
+                                        {resolveBerthMeta(seatList[0]).short}
                                       </span>
                                     </button>
-                                  );
-                                })}
-                              </div>
+                                    <div className="min-w-0">
+                                      <div className="text-xs font-bold text-slate-900">
+                                        {resolveBerthMeta(seatList[0]).label} Berth
+                                      </div>
+                                      <div className="text-[11px] text-slate-500 font-medium truncate">
+                                        Confirmed berth for this segment
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <span className="text-[10px] sm:text-[11px] font-semibold text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded-md border border-emerald-200 self-start sm:self-auto shrink-0 whitespace-nowrap">
+                                    Confirmed Seat
+                                  </span>
+                                </div>
+                              ) : (
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 sm:gap-2">
+                                  {seatList.map((b, bIdx) => {
+                                    const pageOfThisSeat = Math.floor(bIdx / SEATS_PAGE_SIZE) + 1;
+                                    const isVisibleOnCurrentPage = pageOfThisSeat === safeCurrentPage;
+                                    const meta = resolveBerthMeta(b);
+                                    const isSelected = chosenSeat?.coach === b.coach && chosenSeat?.berthNumber === b.berthNumber;
+
+                                    return (
+                                      <button
+                                        type="button"
+                                        key={`seat-${b.coach}-${b.berthNumber}-${bIdx}`}
+                                        onClick={() => handleSelectSeat(segKey, b)}
+                                        title={`Seat ${b.coach}-${b.berthNumber} (${meta.label})`}
+                                        style={{ display: isVisibleOnCurrentPage ? undefined : 'none' }}
+                                        className={`px-1.5 sm:px-2.5 py-1.5 rounded-lg text-xs font-mono font-bold flex items-center justify-between gap-1 border transition-all cursor-pointer select-none ${
+                                          isSelected
+                                            ? 'bg-slate-900 text-white border-slate-900 shadow-xs ring-1 ring-slate-900'
+                                            : 'bg-white text-slate-800 border-slate-200 hover:border-slate-400 hover:bg-slate-50'
+                                        }`}
+                                      >
+                                        <div className="flex items-center gap-1 shrink-0 whitespace-nowrap min-w-0">
+                                          {isSelected && <Check className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-emerald-400 shrink-0" />}
+                                          <span className="font-mono text-[11px] sm:text-xs font-bold tracking-tight whitespace-nowrap">
+                                            {b.coach}-{b.berthNumber}
+                                          </span>
+                                        </div>
+                                        <span
+                                          className={`text-[8.5px] sm:text-[9px] font-sans font-bold px-1 sm:px-1.5 py-0.5 rounded border shrink-0 whitespace-nowrap leading-none ${
+                                            isSelected
+                                              ? 'bg-slate-800 text-slate-200 border-slate-700'
+                                              : meta.badgeClass
+                                          }`}
+                                        >
+                                          {meta.short}
+                                        </span>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              )}
                             </div>
 
                             {/* In-Container Pagination Controls if > 8 seats */}
                             {seatList.length > SEATS_PAGE_SIZE && (
-                              <div className="flex items-center justify-between pt-1.5 sm:pt-2 border-t border-slate-200/80 text-xs gap-1.5 flex-wrap">
-                                <span className="text-[10px] sm:text-[11px] text-slate-500 font-medium whitespace-nowrap">
+                              <div className="flex items-center justify-center sm:justify-between pt-1.5 sm:pt-2 border-t border-slate-200/80 text-xs gap-1.5">
+                                {/* Hidden on small devices so arrow buttons never get pushed off-screen */}
+                                <span className="hidden sm:inline text-[11px] text-slate-500 font-medium whitespace-nowrap">
                                   Seats <strong className="text-slate-800">{(safeCurrentPage - 1) * SEATS_PAGE_SIZE + 1}–{Math.min(safeCurrentPage * SEATS_PAGE_SIZE, seatList.length)}</strong> of <strong className="text-slate-800">{seatList.length}</strong>
                                 </span>
-                                <div className="flex items-center gap-1 sm:gap-1.5 shrink-0 ml-auto">
+                                <div className="flex items-center justify-center sm:justify-end gap-1.5 shrink-0">
                                   <button
                                     type="button"
                                     disabled={safeCurrentPage === 1}
                                     onClick={() => setSeatPages((prev) => ({ ...prev, [segKey]: safeCurrentPage - 1 }))}
-                                    className="p-1 sm:px-2 sm:py-0.5 rounded text-[11px] font-bold border border-slate-300 bg-white text-slate-700 hover:text-slate-950 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer inline-flex items-center gap-0.5"
+                                    className="px-2 py-0.5 sm:py-1 rounded text-xs font-bold border border-slate-300 bg-white text-slate-700 hover:text-slate-950 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer inline-flex items-center gap-0.5"
                                     aria-label="Previous page"
                                   >
                                     <ChevronLeft className="w-3.5 h-3.5 shrink-0" />
-                                    <span className="hidden sm:inline">Prev</span>
+                                    <span className="hidden xs:inline">Prev</span>
                                   </button>
-                                  <span className="text-[11px] font-mono font-bold text-slate-700 px-1.5 py-0.5 rounded bg-white border border-slate-200 whitespace-nowrap">
+                                  <span className="text-xs font-mono font-bold text-slate-700 px-2 py-0.5 rounded bg-white border border-slate-200 whitespace-nowrap">
                                     {safeCurrentPage} / {totalPages}
                                   </span>
                                   <button
                                     type="button"
                                     disabled={safeCurrentPage >= totalPages}
                                     onClick={() => setSeatPages((prev) => ({ ...prev, [segKey]: safeCurrentPage + 1 }))}
-                                    className="p-1 sm:px-2 sm:py-0.5 rounded text-[11px] font-bold border border-slate-300 bg-white text-slate-700 hover:text-slate-950 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer inline-flex items-center gap-0.5"
+                                    className="px-2 py-0.5 sm:py-1 rounded text-xs font-bold border border-slate-300 bg-white text-slate-700 hover:text-slate-950 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer inline-flex items-center gap-0.5"
                                     aria-label="Next page"
                                   >
-                                    <span className="hidden sm:inline">Next</span>
+                                    <span className="hidden xs:inline">Next</span>
                                     <ChevronRight className="w-3.5 h-3.5 shrink-0" />
                                   </button>
                                 </div>
