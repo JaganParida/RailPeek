@@ -4,6 +4,7 @@ import {
   TrainFront,
   Train,
   Ticket,
+  Compass,
   ExternalLink,
   Menu,
   X,
@@ -16,6 +17,7 @@ export function Header() {
 
   const isSearchActive = location.pathname === '/' || location.pathname === '/find';
   const isPnrActive = location.pathname.startsWith('/pnr');
+  const isCoachActive = location.pathname.startsWith('/coach') || location.pathname.startsWith('/chart');
 
   // Close drawer whenever the route changes
   useEffect(() => {
@@ -98,6 +100,18 @@ export function Header() {
               <span className="text-[9px] font-black bg-[#f58220] text-white px-1.5 py-0.2 rounded uppercase">
                 Radar
               </span>
+            </Link>
+
+            <Link
+              to="/coach"
+              className={`px-3 py-1.5 rounded-lg flex items-center gap-2 transition-all ${
+                isCoachActive
+                  ? 'bg-white text-[#1e3a8a] font-bold shadow-xs'
+                  : 'text-blue-100 hover:text-white hover:bg-white/10'
+              }`}
+            >
+              <Compass className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Coach Explorer</span>
             </Link>
 
             <div className="h-4 w-px bg-blue-800 mx-1" />
@@ -251,7 +265,39 @@ export function Header() {
               <ChevronRight className="w-4 h-4 opacity-70 shrink-0" />
             </Link>
 
-            {/* 3. Official IRCTC External Portal */}
+            {/* 3. Coach Layout Explorer */}
+            <Link
+              to="/coach"
+              onClick={() => setIsMobileMenuOpen(false)}
+              className={`w-full p-3 rounded-xl flex items-center justify-between transition-all border ${
+                isCoachActive
+                  ? 'bg-blue-600 text-white font-bold border-blue-500 shadow-md shadow-blue-900/40'
+                  : 'bg-slate-800/60 text-slate-200 border-slate-800 hover:bg-slate-800 hover:text-white'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <div
+                  className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
+                    isCoachActive ? 'bg-white/20' : 'bg-slate-800 border border-slate-700'
+                  }`}
+                >
+                  <Compass className="w-4 h-4 text-emerald-400" />
+                </div>
+                <div className="text-left">
+                  <div className="text-xs font-bold leading-tight">Coach Layout Explorer</div>
+                  <div
+                    className={`text-[10px] mt-0.5 ${
+                      isCoachActive ? 'text-blue-100' : 'text-slate-400'
+                    }`}
+                  >
+                    Interactive seat maps &amp; berths
+                  </div>
+                </div>
+              </div>
+              <ChevronRight className="w-4 h-4 opacity-70 shrink-0" />
+            </Link>
+
+            {/* 4. Official IRCTC External Portal */}
             <div className="pt-2">
               <a
                 href="https://www.irctc.co.in"

@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from './lib/queryClient';
 import { ThemeProvider } from './context/ThemeContext';
@@ -7,6 +7,7 @@ import { Footer } from './components/layout/Footer';
 import { HomePage } from './pages/HomePage';
 import { SearchResultsPage } from './pages/SearchResultsPage';
 import { PnrStatusPage } from './pages/PnrStatusPage';
+import { ChartPage } from './pages/ChartPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 
 export function App() {
@@ -21,7 +22,8 @@ export function App() {
                 <Route path="/" element={<HomePage />} />
                 <Route path="/find" element={<SearchResultsPage />} />
                 <Route path="/pnr" element={<PnrStatusPage />} />
-                <Route path="/chart" element={<Navigate to="/" replace />} />
+                <Route path="/coach" element={<ChartPage />} />
+                <Route path="/chart" element={<ChartPage />} />
                 <Route path="*" element={<NotFoundPage />} />
               </Routes>
             </main>
