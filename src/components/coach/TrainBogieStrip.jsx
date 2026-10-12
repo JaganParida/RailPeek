@@ -325,6 +325,32 @@ export function TrainBogieStrip({
     return rake;
   }, [coaches]);
 
+  const containerRef = React.useRef(null);
+  const activeBogieRef = React.useRef(null);
+
+  // Auto-center active bogie in view screen
+  React.useEffect(() => {
+    const centerActiveBogie = () => {
+      if (activeBogieRef.current && containerRef.current) {
+        const container = containerRef.current;
+        const bogie = activeBogieRef.current;
+        const bogieLeft = bogie.offsetLeft;
+        const bogieWidth = bogie.offsetWidth;
+        const containerWidth = container.offsetWidth;
+        const targetScrollLeft = bogieLeft - containerWidth / 2 + bogieWidth / 2;
+
+        container.scrollTo({
+          left: Math.max(0, targetScrollLeft),
+          behavior: 'smooth',
+        });
+      }
+    };
+
+    centerActiveBogie();
+    const timer = setTimeout(centerActiveBogie, 80);
+    return () => clearTimeout(timer);
+  }, [activeCoach]);
+
   return (
     <div className="w-full space-y-2 select-none">
       <div className="flex items-center justify-between text-xs px-1 text-slate-700 font-medium">
@@ -345,13 +371,16 @@ export function TrainBogieStrip({
           </span>
           <span className="inline-flex items-center gap-1">
             <span className="inline-block w-2.5 h-2.5 rounded-xs bg-slate-200 border border-slate-300" />
-            <span>0 Seats</span>
+            <span>Booked</span>
           </span>
         </span>
       </div>
 
       {/* Clean Train Rake Container - Laser Straight Alignment, Zero Track Lines */}
-      <div className="relative p-3 rounded-2xl bg-white border border-slate-200 shadow-2xs overflow-x-auto scrollbar-thin">
+      <div
+        ref={containerRef}
+        className="relative p-3 rounded-2xl bg-white border border-slate-200 shadow-2xs overflow-x-auto scrollbar-thin scroll-smooth"
+      >
         <div className="flex items-center min-w-max">
           {fullRake.map((bogie, idx) => {
             const isLast = idx === fullRake.length - 1;
@@ -378,7 +407,10 @@ export function TrainBogieStrip({
               return (
                 <React.Fragment key={bogie.id}>
                   {/* Fixed-Size Coach Column (Guarantees 100% Horizontal Alignment) */}
-                  <div className="flex flex-col items-center shrink-0 w-[62px]">
+                  <div
+                    ref={isActive ? activeBogieRef : null}
+                    className="flex flex-col items-center shrink-0 w-[62px]"
+                  >
                     {/* 1. Coach Graphic Slot (Fixed h-[34px] flex items-center) */}
                     <div className="h-[34px] flex items-center justify-center">
                       <button
@@ -430,7 +462,7 @@ export function TrainBogieStrip({
                           ? vacantCount > 0
                             ? `${vacantCount} seats`
                             : bogie.classCode
-                          : '0'}
+                          : bogie.classCode || 'Full'}
                       </span>
                     </div>
                   </div>
