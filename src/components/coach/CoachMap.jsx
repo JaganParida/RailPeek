@@ -114,7 +114,7 @@ export function CoachMap({
     if (!berth) {
       return (
         <div
-          className={`rounded-xl bg-slate-50 border border-dashed border-slate-200 ${
+          className={`rounded-lg bg-slate-50 border border-dashed border-slate-200 ${
             compact ? 'h-14' : 'h-16'
           }`}
         />
@@ -129,13 +129,6 @@ export function CoachMap({
     const berthCode = getBerthCode(berth);
     const berthTitle = getBerthTitle(berth);
 
-    // Style Rule:
-    // Vacant = Authentic Emerald Green Berth with Cushion Ridge
-    // Booked = Classic Soft Gray Seat
-    const bgClasses = isVacant
-      ? 'bg-emerald-600 text-white border-2 border-emerald-500 shadow-xs hover:bg-emerald-500 active:scale-95'
-      : 'bg-slate-100 text-slate-700 border border-slate-300 hover:bg-slate-200/90 active:scale-95';
-
     return (
       <button
         key={berth.berthNumber}
@@ -143,9 +136,19 @@ export function CoachMap({
         onClick={() => onSelectBerth && onSelectBerth(berth)}
         onMouseEnter={() => setHoveredBerth(berth)}
         onMouseLeave={() => setHoveredBerth(null)}
-        title={`Seat ${berth.berthNumber} (${berthTitle}) - ${isVacant ? (isPartial ? `Vacant (${berth.coveragePercent}% segment)` : 'Vacant') : 'Booked'}`}
-        className={`relative flex flex-col justify-between p-1 sm:p-1.5 rounded-xl text-center transition-all cursor-pointer select-none ${bgClasses} ${
-          compact ? 'min-h-[56px]' : 'min-h-[64px]'
+        title={`Seat ${berth.berthNumber} (${berthTitle}) - ${
+          isVacant
+            ? isPartial
+              ? `Vacant (${berth.coveragePercent}% segment)`
+              : 'Vacant Berth'
+            : 'Booked Berth'
+        }`}
+        className={`group relative flex flex-col justify-between rounded-lg transition-all duration-150 cursor-pointer select-none text-left overflow-hidden border ${
+          compact ? 'min-h-[58px] p-1.5' : 'min-h-[64px] p-2'
+        } ${
+          isVacant
+            ? 'bg-emerald-500 hover:bg-emerald-600 text-white border-emerald-600 shadow-xs'
+            : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
         } ${
           isSelected
             ? 'ring-3 ring-blue-600 ring-offset-2 ring-offset-white scale-[1.04] z-10 border-blue-600 shadow-md'
@@ -154,26 +157,21 @@ export function CoachMap({
             : ''
         }`}
       >
-        {/* Cushion Headrest Bar (Authentic Railway Leather Berth Detail) */}
-        <div
-          className={`w-full h-1 rounded-full mb-0.5 transition-opacity ${
-            isVacant ? 'bg-white/40' : 'bg-slate-300'
-          }`}
-        />
+        {/* Authentic Train Berth Pillow / Headrest Cushion */}
+        <div className="flex items-center justify-between w-full mb-0.5">
+          {/* Berth Pillow Notch */}
+          <div
+            className={`h-1.5 rounded-full transition-all ${
+              hasWindow ? 'w-5' : 'w-4'
+            } ${isVacant ? 'bg-white/50' : 'bg-slate-300'}`}
+            title="Berth Headrest"
+          />
 
-        {/* Top: Berth Code (LB, MB, UB, SL, SU) & Window Icon */}
-        <div className="flex items-center justify-between w-full leading-none px-0.5">
-          <span
-            className={`text-[9.5px] sm:text-[10px] font-black uppercase tracking-wider ${
-              isVacant ? 'text-emerald-100' : 'text-slate-600'
-            }`}
-          >
-            {berthCode}
-          </span>
+          {/* Window Indicator Icon */}
           {hasWindow && (
             <span
-              className={`shrink-0 inline-flex items-center gap-0.5 ${
-                isVacant ? 'text-emerald-100' : 'text-sky-600'
+              className={`inline-flex items-center gap-0.5 text-[9px] font-bold ${
+                isVacant ? 'text-white' : 'text-sky-600'
               }`}
               title="Window Seat"
             >
@@ -182,26 +180,39 @@ export function CoachMap({
           )}
         </div>
 
-        {/* Center: Prominent Railway Berth Number */}
-        <div
-          className={`font-mono font-black text-sm sm:text-base tracking-tight leading-none my-0.5 ${
-            isVacant ? 'text-white' : 'text-slate-900'
-          }`}
-        >
-          {berth.berthNumber}
+        {/* Center: Big Bold Berth Number & Code Tag */}
+        <div className="flex items-baseline justify-between w-full my-auto px-0.5">
+          <span className="font-mono font-black text-base sm:text-lg tracking-tight leading-none">
+            {berth.berthNumber}
+          </span>
+          <span
+            className={`text-[9.5px] font-black uppercase tracking-wider ${
+              isVacant ? 'text-emerald-100' : 'text-slate-500'
+            }`}
+          >
+            {berthCode}
+          </span>
         </div>
 
-        {/* Bottom: Vacant/Booked Status Pill */}
-        <div className="leading-none text-[8px] sm:text-[8.5px] font-bold uppercase tracking-wider">
-          {isVacant ? (
-            <span className="text-emerald-50 bg-emerald-700/80 px-1 py-0.2 rounded font-black inline-block">
-              {isPartial ? `${berth.coveragePercent || 'Part'}%` : 'VACANT'}
-            </span>
-          ) : (
-            <span className="text-slate-400 font-semibold">
-              BOOKED
-            </span>
-          )}
+        {/* Bottom: Status Tag (VACANT / BOOKED / % Segment) */}
+        <div className="mt-1 flex items-center justify-between w-full pt-0.5 border-t border-black/10 px-0.5">
+          <span
+            className={`text-[8px] sm:text-[8.5px] font-bold uppercase tracking-wider ${
+              isVacant ? 'text-emerald-100' : 'text-slate-500'
+            }`}
+          >
+            {isVacant
+              ? isPartial
+                ? `${berth.coveragePercent || 'Part'}%`
+                : 'Vacant'
+              : 'Booked'}
+          </span>
+          {/* Subtle indicator dot */}
+          <span
+            className={`w-1.5 h-1.5 rounded-full ${
+              isVacant ? 'bg-emerald-200' : 'bg-slate-400'
+            }`}
+          />
         </div>
       </button>
     );
