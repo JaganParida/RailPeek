@@ -401,12 +401,24 @@ export async function getCoachVacancy({
             vbTo,
           });
 
-          if (overlap.overlaps) {
-            isFull = overlap.isFull;
-            coveragePercent = overlap.coveragePercent;
-            actualFrom = overlap.actualFrom;
-            actualTo = overlap.actualTo;
+          if (!overlap.overlaps) {
+            return {
+              ...b,
+              status: 'UNAVAILABLE',
+              statusLabel: 'Booked / Unavailable',
+              coveragePercent: 0,
+              availableFrom: vbFrom || userFrom,
+              availableTo: vbTo || userTo,
+              occupiedSegments: [{ from: userFrom, to: userTo }],
+              vacantSegments: [],
+              suitabilityReason: `Occupied/Unavailable on your boarding route from ${userFrom}.`,
+            };
           }
+
+          isFull = overlap.isFull;
+          coveragePercent = overlap.coveragePercent;
+          actualFrom = overlap.actualFrom;
+          actualTo = overlap.actualTo;
         }
 
         const bStatus = isFull ? 'FULL_JOURNEY' : 'PARTIAL_JOURNEY';
