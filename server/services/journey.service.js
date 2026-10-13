@@ -183,9 +183,10 @@ export function calculateChartTimings(journeyDate, depTime, liveComp = null, isD
     }
   }
 
-  // A chart is done if confirmed live, OR if the train has departed, OR if we're past the chart time for today/past date
-  const isFirstChartDone = Boolean(chartOneDate) || isDeparted || isPastFirstChartTime;
-  const isSecondChartDone = Boolean(chartTwoDate) || isDeparted || isPastFinalChartTime;
+  // Authentic IRCTC Grounding: If IRCTC explicitly confirmed chart is not prepared, respect IRCTC!
+  const isChartExplicitlyNotPrepared = liveComp && liveComp.isPrepared === false;
+  const isFirstChartDone = !isChartExplicitlyNotPrepared && (Boolean(chartOneDate) || isDeparted || isPastFirstChartTime);
+  const isSecondChartDone = !isChartExplicitlyNotPrepared && (Boolean(chartTwoDate) || isDeparted || isPastFinalChartTime);
 
   const formatTimeOnly = (dtStr) => {
     if (!dtStr) return '';
@@ -562,8 +563,14 @@ export async function findUsableBerths(params) {
   const isAllClasses = travelClass === 'ALL' || crossClass;
   const targetClasses = isAllClasses ? ['SL', '3A', '2A', '1A', '2S', 'CC'] : [travelClass];
 
-  // Evaluate all route trains so we can provide cross-comparison and route alternatives
-  const trainsToEvaluate = allRouteTrains;
+  // Prioritize requested train and cap cross-comparison to avoid slow queries or bridge timeouts
+  let trainsToEvaluate = allRouteTrains;
+  if (requestedTrain && candidateTrains.length > 0) {
+    const otherTrains = allRouteTrains.filter((t) => (t.number || t.trainNumber) !== requestedTrain).slice(0, 4);
+    trainsToEvaluate = [...candidateTrains, ...otherTrains];
+  } else if (allRouteTrains.length > 8) {
+    trainsToEvaluate = allRouteTrains.slice(0, 8);
+  }
 
   // 2. Query availability with Smart Life-Cycle Bypass & Concurrency Throttling
   const availabilityResults = [];

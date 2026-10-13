@@ -81,18 +81,15 @@ export function TrainAccordionCard({
   );
 
   const rawBerths = availableBerths?.length > 0 ? availableBerths : allocatedBerths;
-  const totalVacantCount = Number(
-    train.totalVacantCount ?? (rawBerths?.length || 0)
-  );
-
   const fullJourneyCount = rawBerths.filter(
     (b) => b.status === 'FULL_JOURNEY' || b.coveragePercent === 100
   ).length;
 
-  const _partialSegmentCount = rawBerths.filter(
+  const partialSegmentCount = rawBerths.filter(
     (b) => b.status === 'PARTIAL_JOURNEY' || (b.coveragePercent > 0 && b.coveragePercent < 100)
   ).length;
 
+  const totalVacantCount = fullJourneyCount > 0 ? fullJourneyCount : partialSegmentCount;
   const hasVacancies = totalVacantCount > 0 && !isDeparted;
   const _isFullJourney = coverageStatus === 'FULL_JOURNEY' || fullJourneyCount > 0;
   const currentClass = train.travelClass || selectedClass || '3A';
@@ -213,8 +210,14 @@ export function TrainAccordionCard({
             ) : hasVacancies ? (
               <span className="text-[10px] sm:text-xs font-bold px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-md border inline-flex items-center gap-1 sm:gap-1.5 bg-emerald-50 text-emerald-800 border-emerald-400 shrink-0 whitespace-nowrap">
                 <CheckCircle2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-emerald-600 shrink-0" />
-                <span className="sm:inline hidden">{totalVacantCount} Vacant {totalVacantCount === 1 ? 'Berth' : 'Berths'} Available</span>
-                <span className="sm:hidden">{totalVacantCount} Vacant</span>
+                <span className="sm:inline hidden">
+                  {fullJourneyCount > 0
+                    ? `${fullJourneyCount} Direct ${fullJourneyCount === 1 ? 'Berth' : 'Berths'} Available`
+                    : `${partialSegmentCount} Partial ${partialSegmentCount === 1 ? 'Berth' : 'Berths'}`}
+                </span>
+                <span className="sm:hidden">
+                  {fullJourneyCount > 0 ? `${fullJourneyCount} Direct` : `${partialSegmentCount} Partial`}
+                </span>
               </span>
             ) : availableAltClasses.length > 0 ? (
               <div className="flex items-center gap-1 sm:gap-1.5 flex-nowrap shrink-0 overflow-x-auto scrollbar-none">

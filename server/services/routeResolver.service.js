@@ -255,24 +255,47 @@ export function resolveJourneyOverlap({ routeStops, fromCode, toCode, vbFrom, vb
     };
   }
 
-  // Resolve berth vacancy start/end
+  // Resolve berth vacancy start/end with boundary fallbacks
   let vStart = stnIdx.get(normVbFrom);
   if (vStart === undefined) {
-    const cluster = TERMINAL_CLUSTERS[normVbFrom] || [];
-    for (const alt of cluster) {
-      if (stnIdx.has(alt)) { vStart = stnIdx.get(alt); break; }
+    if (normVbFrom === normFrom) {
+      vStart = fromIdx;
+    } else if (routeStops[0] && normVbFrom === routeStops[0].stationCode) {
+      vStart = 0;
+    } else {
+      const cluster = TERMINAL_CLUSTERS[normVbFrom] || [];
+      for (const alt of cluster) {
+        if (stnIdx.has(alt)) { vStart = stnIdx.get(alt); break; }
+      }
     }
   }
 
   let vEnd = stnIdx.get(normVbTo);
   if (vEnd === undefined) {
-    const cluster = TERMINAL_CLUSTERS[normVbTo] || [];
-    for (const alt of cluster) {
-      if (stnIdx.has(alt)) { vEnd = stnIdx.get(alt); break; }
+    if (normVbTo === normTo) {
+      vEnd = toIdx;
+    } else if (routeStops[routeStops.length - 1] && normVbTo === routeStops[routeStops.length - 1].stationCode) {
+      vEnd = routeStops.length - 1;
+    } else {
+      const cluster = TERMINAL_CLUSTERS[normVbTo] || [];
+      for (const alt of cluster) {
+        if (stnIdx.has(alt)) { vEnd = stnIdx.get(alt); break; }
+      }
     }
   }
 
   if (vStart === undefined || vEnd === undefined || vStart >= vEnd) {
+    // If vacancy stations cannot be positioned along the route, check direct origin/destination match
+    if (normVbFrom === normFrom && normVbTo === normTo) {
+      return {
+        overlaps: true,
+        isFull: true,
+        coveragePercent: 100,
+        actualFrom: normFrom,
+        actualTo: normTo,
+        status: 'FULL_JOURNEY',
+      };
+    }
     return {
       overlaps: false,
       isFull: false,
@@ -283,12 +306,25 @@ export function resolveJourneyOverlap({ routeStops, fromCode, toCode, vbFrom, vb
     };
   }
 
-  // Calculate segment overlap
+  // Strict Passenger Usability Rule:
+  // A passenger boards at `fromIdx`. If the berth is NOT vacant at `fromIdx` (vStart > fromIdx),
+  // the passenger has no seat at boarding! Never suggest random mid-route hops where passenger is seatless at departure.
+  if (vStart > fromIdx) {
+    return {
+      overlaps: false,
+      isFull: false,
+      coveragePercent: 0,
+      actualFrom: normVbFrom,
+      actualTo: normVbTo,
+      status: 'UNAVAILABLE',
+    };
+  }
+
+  // Calculate segment overlap starting from passenger boarding point
   const overlapStart = Math.max(vStart, fromIdx);
   const overlapEnd = Math.min(vEnd, toIdx);
 
   if (overlapStart >= overlapEnd) {
-    // Vacancy is entirely outside the passenger's journey!
     return {
       overlaps: false,
       isFull: false,
@@ -302,8 +338,8 @@ export function resolveJourneyOverlap({ routeStops, fromCode, toCode, vbFrom, vb
   const isFull = vStart <= fromIdx && vEnd >= toIdx;
   const stopFrom = Array.isArray(routeStops) ? routeStops[overlapStart] : null;
   const stopTo = Array.isArray(routeStops) ? routeStops[overlapEnd] : null;
-  const actualFrom = stopFrom?.stationCode || normVbFrom;
-  const actualTo = stopTo?.stationCode || normVbTo;
+  const actualFrom = stopFrom?.stationCode || normFrom;
+  const actualTo = stopTo?.stationCode || (isFull ? normTo : normVbTo);
   const journeySpan = Math.max(1, toIdx - fromIdx);
   const overlapSpan = overlapEnd - overlapStart;
   const coveragePercent = isFull
