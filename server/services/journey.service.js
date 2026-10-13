@@ -874,7 +874,6 @@ export async function findUsableBerths(params) {
           } catch (_err) {
             // fallback gracefully
           }
-        }
 
         // Anti-Hallucination & Upstream Parity Policy:
         // Always respect genuine IRCTC data. Never hallucinate fake berths in production.
