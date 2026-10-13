@@ -310,7 +310,9 @@ export function SearchResultsPage() {
   // Calculate aggregate vacancies per class across all upcoming operating route trains
   const routeClassVacancyTotals = useMemo(() => {
     const totals = { SL: 0, '3A': 0, '2A': 0, '1A': 0, '2S': 0, CC: 0, '3E': 0 };
-    const upcomingCrossTrains = crossTrains.filter((t) => !t.isDeparted && !t.chartStatus?.includes('DEPARTED'));
+    const upcomingCrossTrains = crossTrains.filter(
+      (t) => !t.isDeparted && !t.chartStatus?.includes('DEPARTED') && t.bookingChannel !== 'TTE_ONLY'
+    );
     for (const t of upcomingCrossTrains) {
       if (Array.isArray(t.classSummaries)) {
         for (const cs of t.classSummaries) {
@@ -560,9 +562,19 @@ export function SearchResultsPage() {
               <span className="text-xs font-bold text-slate-700 truncate hidden md:inline max-w-[160px]">
                 {activeViewingTrain.trainName}
               </span>
-              <span className="text-[10px] sm:text-xs font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded shrink-0 whitespace-nowrap">
-                {activeViewingTrain.totalVacantCount} Vacant
-              </span>
+              {activeViewingTrain.isDeparted ? (
+                <span className="text-[10px] sm:text-xs font-bold text-slate-700 bg-slate-100 border border-slate-300 px-1.5 py-0.5 rounded shrink-0 whitespace-nowrap">
+                  Departed
+                </span>
+              ) : (activeViewingTrain.bookingChannel === 'TTE_ONLY' || (activeViewingTrain.chartTimings?.isSecondChartDone && !activeViewingTrain.chartTimings?.canBookOnline)) ? (
+                <span className="text-[10px] sm:text-xs font-bold text-amber-800 bg-amber-50 border border-amber-300 px-1.5 py-0.5 rounded shrink-0 whitespace-nowrap">
+                  {activeViewingTrain.totalVacantCount} TTE Only
+                </span>
+              ) : (
+                <span className="text-[10px] sm:text-xs font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded shrink-0 whitespace-nowrap">
+                  {activeViewingTrain.totalVacantCount} Vacant
+                </span>
+              )}
             </div>
 
             <button

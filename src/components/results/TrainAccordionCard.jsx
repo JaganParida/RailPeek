@@ -76,7 +76,6 @@ export function TrainAccordionCard({
 
   const isTTEOnly = Boolean(
     train.bookingChannel === 'TTE_ONLY' ||
-    Boolean(effectiveChartTwoDate && fromStation && (!effectiveAvlRemote || effectiveAvlRemote !== fromStation)) ||
     (train.chartTimings?.isSecondChartDone && !train.chartTimings?.canBookOnline && !isDeparted)
   );
 
@@ -90,7 +89,7 @@ export function TrainAccordionCard({
   ).length;
 
   const totalVacantCount = fullJourneyCount > 0 ? fullJourneyCount : partialSegmentCount;
-  const hasVacancies = totalVacantCount > 0 && !isDeparted;
+  const hasVacancies = totalVacantCount > 0 && !isDeparted && !isTTEOnly;
   const _isFullJourney = coverageStatus === 'FULL_JOURNEY' || fullJourneyCount > 0;
   const currentClass = train.travelClass || selectedClass || '3A';
   const trainClasses = train.classes || [];
@@ -290,7 +289,7 @@ export function TrainAccordionCard({
           </div>
 
           {/* View Berths Toggle Button */}
-          {hasVacancies && (
+          {hasVacancies ? (
             <Button
               type="button"
               variant="outline"
@@ -308,7 +307,25 @@ export function TrainAccordionCard({
             >
               {isOpen ? 'Hide Berths' : `View Berths (${totalVacantCount})`}
             </Button>
-          )}
+          ) : isTTEOnly && totalVacantCount > 0 ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              rightIcon={isOpen ? ChevronUp : ChevronDown}
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggle();
+              }}
+              className={`whitespace-nowrap font-bold text-xs h-9 px-3.5 rounded-lg shrink-0 ${
+                isOpen
+                  ? 'bg-amber-800 text-white border-amber-800 hover:bg-amber-900'
+                  : 'bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100 hover:border-amber-400'
+              }`}
+            >
+              {isOpen ? 'Hide TTE Berths' : `TTE Berths (${totalVacantCount})`}
+            </Button>
+          ) : null}
         </div>
 
         {/* Tier 2: Dedicated Sleek Chart & Booking Status Bar */}
@@ -358,13 +375,21 @@ export function TrainAccordionCard({
       {/* Accordion Expanded Content */}
       <div
         className={`grid transition-all duration-300 ease-in-out ${
-          isOpen && hasVacancies
+          isOpen && (hasVacancies || (isTTEOnly && totalVacantCount > 0))
             ? 'grid-rows-[1fr] opacity-100'
             : 'grid-rows-[0fr] opacity-0 pointer-events-none'
         }`}
       >
         <div className="overflow-hidden">
           <div className="p-2 sm:p-4 border-t border-slate-200 bg-white">
+            {isTTEOnly && totalVacantCount > 0 && (
+              <div className="mb-3 px-3 py-2 rounded-lg bg-amber-50 border border-amber-300 text-amber-950 text-xs font-semibold flex items-center gap-2">
+                <Clock className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>
+                  <strong>IRCTC Online Booking Closed:</strong> Final chart is finalized. These {totalVacantCount} vacant berths are available on-board directly from the Train Ticket Examiner (TTE).
+                </span>
+              </div>
+            )}
             <VacantBerthsGrid
               berths={availableBerths}
               allocatedBerths={allocatedBerths}

@@ -183,10 +183,25 @@ export function calculateChartTimings(journeyDate, depTime, liveComp = null, isD
     }
   }
 
-  // Authentic IRCTC Grounding: If IRCTC explicitly confirmed chart is not prepared, respect IRCTC!
-  const isChartExplicitlyNotPrepared = liveComp && liveComp.isPrepared === false;
-  const isFirstChartDone = !isChartExplicitlyNotPrepared && (Boolean(chartOneDate) || isDeparted || isPastFirstChartTime);
-  const isSecondChartDone = !isChartExplicitlyNotPrepared && (Boolean(chartTwoDate) || isDeparted || isPastFinalChartTime);
+  // Authentic IRCTC Grounding:
+  // When live composition data is received from IRCTC, IRCTC's timestamps are the authoritative ground truth!
+  let isFirstChartDone = false;
+  let isSecondChartDone = false;
+
+  if (liveComp) {
+    if (liveComp.isPrepared === false) {
+      isFirstChartDone = false;
+      isSecondChartDone = false;
+    } else {
+      isFirstChartDone = Boolean(chartOneDate || liveComp.isPrepared);
+      // Second chart is only done if IRCTC officially finalized chartTwoDate, or if train departed boarding station!
+      isSecondChartDone = Boolean(chartTwoDate) || isDeparted;
+    }
+  } else {
+    // Fallback clock math only when live IRCTC data is unavailable (demo/test mode)
+    isFirstChartDone = isDeparted || isPastFirstChartTime;
+    isSecondChartDone = isDeparted || isPastFinalChartTime;
+  }
 
   const formatTimeOnly = (dtStr) => {
     if (!dtStr) return '';
