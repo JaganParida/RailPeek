@@ -332,17 +332,48 @@ export function VacantBerthsGrid({
     }
 
     const lastItem = items[items.length - 1];
-    const destCode = lastItem ? (lastItem.to || toStation) : toStation;
-    stages.push({
-      id: `dest-final-${destCode}`,
-      type: 'DESTINATION',
-      stationCode: destCode,
-      stationLabel: 'Destination',
-      shortLabel: 'Arrival',
-      nodeType: 'END',
-      isGapTrack: false,
-      item: null,
-    });
+    const userDest = (toStation || '').toUpperCase();
+    const lastTo = (lastItem?.to || '').toUpperCase();
+
+    if (lastItem && lastTo && userDest && lastTo !== userDest) {
+      // Reserved berth ends before user destination (e.g. seat ends at SKT, user destination is BBS)
+      stages.push({
+        id: `seat-end-${lastTo}`,
+        type: 'SEAT_END',
+        stationCode: lastTo,
+        stationLabel: 'Seat Ends',
+        shortLabel: 'Ends',
+        nodeType: 'GAP_START',
+        isGapTrack: true,
+        item: {
+          from: lastTo,
+          to: userDest,
+          tip: `Reserved berth ends at ${lastTo}. For the remaining journey to ${userDest}, speak to the train TTE on board or continue unreserved.`,
+        },
+      });
+
+      stages.push({
+        id: `dest-final-${userDest}`,
+        type: 'DESTINATION',
+        stationCode: userDest,
+        stationLabel: 'Destination',
+        shortLabel: 'Arrival',
+        nodeType: 'END',
+        isGapTrack: false,
+        item: null,
+      });
+    } else {
+      stages.push({
+        id: `dest-final-${userDest || lastTo}`,
+        type: 'DESTINATION',
+        stationCode: userDest || lastTo,
+        stationLabel: 'Destination',
+        shortLabel: 'Arrival',
+        nodeType: 'END',
+        isGapTrack: false,
+        item: null,
+      });
+    }
 
     return stages;
   }, [connectedItinerary, toStation]);
@@ -456,7 +487,9 @@ export function VacantBerthsGrid({
                 <span className="text-xs sm:text-sm font-bold text-slate-900 whitespace-nowrap">
                   {connectedItinerary.isDirect
                     ? 'Direct Journey'
-                    : 'Connected Journey'}
+                    : connectedItinerary.hasGaps
+                    ? 'Partial Journey (Seat ends early)'
+                    : 'Connected Journey (Switch Seats)'}
                 </span>
               </div>
               <span className="text-[10px] sm:text-[11px] font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 whitespace-nowrap shrink-0">
@@ -733,18 +766,38 @@ export function VacantBerthsGrid({
                         </div>
                       )}
 
+                      {stage.type === 'SEAT_END' && (
+                        <div className="pt-0.5 space-y-2">
+                          <div className="flex items-center gap-1.5 sm:gap-2">
+                            <span className="text-xs sm:text-sm font-bold text-slate-900 font-mono">
+                              {stage.stationCode}
+                            </span>
+                            <span className="text-[10px] font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-300">
+                              Reserved Seat Ends Here
+                            </span>
+                          </div>
+                          <div className="p-2 sm:p-2.5 rounded-lg bg-amber-50/80 border border-amber-200 text-xs text-amber-950 font-medium leading-relaxed">
+                            {stage.item?.tip}
+                          </div>
+                        </div>
+                      )}
+
                       {stage.type === 'DESTINATION' && (
                         <div className="pt-0.5">
                           <div className="flex items-center gap-1.5 sm:gap-2">
                             <span className="text-xs sm:text-sm font-bold text-slate-900 font-mono">
                               {stage.stationCode}
                             </span>
-                            <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
-                              Journey Complete
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${
+                              connectedItinerary.isDirect || !connectedItinerary.hasGaps
+                                ? 'text-emerald-800 bg-emerald-50 border-emerald-200'
+                                : 'text-slate-700 bg-slate-100 border-slate-300'
+                            }`}>
+                              {connectedItinerary.isDirect || !connectedItinerary.hasGaps ? 'Journey Complete' : 'Your Destination'}
                             </span>
                           </div>
                           <div className="text-[10px] sm:text-[11px] text-slate-500 font-medium mt-0.5">
-                            Arrival at final destination station.
+                            Arrival at your destination station ({stage.stationCode}).
                           </div>
                         </div>
                       )}

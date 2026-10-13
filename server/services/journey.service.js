@@ -194,8 +194,12 @@ export function calculateChartTimings(journeyDate, depTime, liveComp = null, isD
       isSecondChartDone = false;
     } else {
       isFirstChartDone = Boolean(chartOneDate || liveComp.isPrepared);
-      // Second chart is only done if IRCTC officially finalized chartTwoDate, or if train departed boarding station!
-      isSecondChartDone = Boolean(chartTwoDate) || isDeparted;
+      // If online booking is actively open from a remote station (e.g. NZM), the remote station's chart is NOT finalized!
+      if (liveComp.avlRemoteForBooking && !isBeforeRemote && !isDeparted) {
+        isSecondChartDone = false;
+      } else {
+        isSecondChartDone = Boolean(chartTwoDate) || isDeparted;
+      }
     }
   } else {
     // Fallback clock math only when live IRCTC data is unavailable (demo/test mode)
@@ -245,10 +249,17 @@ export function calculateChartTimings(journeyDate, depTime, liveComp = null, isD
       canBookOnline = true;
     }
   } else if (isFirstChartDone) {
-    bookingChannel = 'IRCTC_CURRENT_BOOKING';
-    bookingChannelLabel = 'Current Booking Open on IRCTC';
-    bookingChannelDesc = `First Chart prepared (${chartOneDate ? formatTimeOnly(chartOneDate) : 'at base'}). Current Reservation is open on IRCTC website and PRS counters until Final Chart is finalized.`;
-    canBookOnline = true;
+    if (liveComp?.avlRemoteForBooking && !isBeforeRemote) {
+      bookingChannel = 'REMOTE_ONLINE_OR_TTE';
+      bookingChannelLabel = `Online from ${liveComp.avlRemoteForBooking} / TTE on train`;
+      bookingChannelDesc = `Current Booking is open on IRCTC from ${liveComp.avlRemoteForBooking} until Final Chart is finalized.`;
+      canBookOnline = true;
+    } else {
+      bookingChannel = 'IRCTC_CURRENT_BOOKING';
+      bookingChannelLabel = 'Current Booking Open on IRCTC';
+      bookingChannelDesc = `First Chart prepared (${chartOneDate ? formatTimeOnly(chartOneDate) : 'at base'}). Current Reservation is open on IRCTC website and PRS counters until Final Chart is finalized.`;
+      canBookOnline = true;
+    }
   }
 
   let firstChartDisplay = '';
@@ -265,7 +276,7 @@ export function calculateChartTimings(journeyDate, depTime, liveComp = null, isD
   }
 
   let finalChartDisplay = '';
-  if (chartTwoDate) {
+  if (isSecondChartDone && chartTwoDate) {
     finalChartDisplay = `Finalized at ${formatTimeOnly(chartTwoDate)}`;
   } else if (isSecondChartDone) {
     finalChartDisplay = finalChartTimeFormatted

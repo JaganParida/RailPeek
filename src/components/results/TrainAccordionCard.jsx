@@ -106,7 +106,6 @@ export function TrainAccordionCard({
 
   const isFinalChartDone = Boolean(
     train.chartTimings?.isSecondChartDone ||
-    effectiveChartTwoDate ||
     isDeparted ||
     train.chartStatus === 'FINAL_CHART'
   );
@@ -119,13 +118,17 @@ export function TrainAccordionCard({
     return dtStr.slice(0, 5);
   };
 
-  let firstChartText = effectiveChartOneDate
-    ? `Prepared at ${formatTimeOnly(effectiveChartOneDate)}`
-    : (train.chartTimings?.firstChartDisplay || (isDeparted ? 'Prepared' : 'Scheduled'));
+  let firstChartText = train.chartTimings?.firstChartDisplay || (
+    effectiveChartOneDate
+      ? `Prepared at ${formatTimeOnly(effectiveChartOneDate)}`
+      : (isDeparted ? 'Prepared' : 'Scheduled')
+  );
 
-  let finalChartText = effectiveChartTwoDate
-    ? `Finalized at ${formatTimeOnly(effectiveChartTwoDate)}`
-    : (train.chartTimings?.finalChartDisplay || (isDeparted ? 'Finalized' : '~30m before dep'));
+  let finalChartText = train.chartTimings?.finalChartDisplay || (
+    isFinalChartDone && effectiveChartTwoDate
+      ? `Finalized at ${formatTimeOnly(effectiveChartTwoDate)}`
+      : (isDeparted ? 'Finalized' : '~30m before dep')
+  );
 
   // If train has departed, charts must never say "Scheduled"
   if (isDeparted) {
