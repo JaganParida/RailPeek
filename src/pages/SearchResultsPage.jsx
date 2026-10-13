@@ -25,6 +25,8 @@ import { CrossTrainMatrix } from '@/components/results/CrossTrainMatrix';
 import { AlternativeDateBanner } from '@/components/results/AlternativeDateBanner';
 import { SuggestedAlternativeBanner } from '@/components/results/SuggestedAlternativeBanner';
 import { BerthInspectDialog } from '@/components/ui/BerthInspectDialog';
+import { fetchBrowserTrainComposition, fetchBrowserVacantBerths } from '@/services/clientIrctc';
+import { mapIrctcVacantBerths } from '@/services/clientCoachLayout';
 
 export function SearchResultsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -53,6 +55,18 @@ export function SearchResultsPage() {
   const [showMatrix, setShowMatrix] = useState(false);
   const [inspectOption, setInspectOption] = useState(null);
   const [showDepartedList, setShowDepartedList] = useState(false);
+  const [clientEnrichedMap, setClientEnrichedMap] = useState({});
+
+  const nextDayDate = useMemo(() => {
+    if (!date) return '';
+    try {
+      const d = new Date(date + 'T00:00:00');
+      d.setDate(d.getDate() + 1);
+      return d.toISOString().split('T')[0];
+    } catch (_e) {
+      return '';
+    }
+  }, [date]);
 
   useEffect(() => {
     if (trainParam) {
@@ -230,13 +244,83 @@ export function SearchResultsPage() {
     return '';
   }, [activeTrain, effectiveBestMatch, allDisplayTrains, requestedTrainNotice]);
 
+  // Live client-side IRCTC enrichment when server (e.g. Vercel) is blocked or lacks berths
+  useEffect(() => {
+    if (!from || !to || !date || !selectedClass || allDisplayTrains.length === 0) return;
+    let isMounted = true;
+
+    // Fetch live IRCTC chart composition & vacant berths for operating trains
+    const targets = allDisplayTrains.slice(0, 8);
+    targets.forEach(async (t) => {
+      const tNum = t.trainNumber;
+      if (!tNum) return;
+
+      try {
+        const [comp, rawVb] = await Promise.allSettled([
+          fetchBrowserTrainComposition(tNum, date, from),
+          fetchBrowserVacantBerths({
+            trainNo: tNum,
+            jDate: date,
+            boardingStation: from,
+            cls: selectedClass,
+          }),
+        ]);
+
+        if (!isMounted) return;
+
+        const compResult = comp.status === 'fulfilled' ? comp.value : null;
+        const vbResult = rawVb.status === 'fulfilled' ? rawVb.value : null;
+
+        const mappedBerths = Array.isArray(vbResult) && vbResult.length > 0
+          ? mapIrctcVacantBerths(vbResult, from, to)
+          : [];
+
+        if (compResult || mappedBerths.length > 0) {
+          setClientEnrichedMap((prev) => ({
+            ...prev,
+            [tNum]: {
+              isChartPrepared: Boolean(compResult?.chartOneDate),
+              chartOneDate: compResult?.chartOneDate || prev[tNum]?.chartOneDate,
+              chartTwoDate: compResult?.chartTwoDate || prev[tNum]?.chartTwoDate,
+              availableBerths: mappedBerths.length > 0 ? mappedBerths : (prev[tNum]?.availableBerths || []),
+              totalVacantCount: mappedBerths.length > 0 ? mappedBerths.length : (prev[tNum]?.totalVacantCount || 0),
+            },
+          }));
+        }
+      } catch (_err) {
+        // Safe catch
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [from, to, date, selectedClass, allDisplayTrains]);
+
+  const displayTrainsBeforeFilter = useMemo(() => {
+    return allDisplayTrains.map((t) => {
+      const enriched = clientEnrichedMap[t.trainNumber];
+      if (!enriched) return t;
+      const finalBerths = enriched.availableBerths?.length > 0 ? enriched.availableBerths : t.availableBerths;
+      const finalCount = enriched.totalVacantCount > 0 ? enriched.totalVacantCount : (finalBerths?.length || t.totalVacantCount || 0);
+      return {
+        ...t,
+        isChartPrepared: t.isChartPrepared || enriched.isChartPrepared,
+        chartOneDate: t.chartOneDate || enriched.chartOneDate,
+        chartTwoDate: t.chartTwoDate || enriched.chartTwoDate,
+        availableBerths: finalBerths,
+        totalVacantCount: finalCount,
+      };
+    });
+  }, [allDisplayTrains, clientEnrichedMap]);
+
   // Check if ANY operating upcoming train on this route has direct continuous berths
   const hasAnyDirectTrains = useMemo(() => {
-    return allDisplayTrains.some((t) => {
+    return displayTrainsBeforeFilter.some((t) => {
       const isDeparted = t.isDeparted || t.chartStatus?.includes('DEPARTED');
       return !isDeparted && trainHasDirectBerths(t);
     });
-  }, [allDisplayTrains]);
+  }, [displayTrainsBeforeFilter]);
 
   // Automatically reset fullJourneyOnly if route has no direct continuous trains
   useEffect(() => {
@@ -247,9 +331,9 @@ export function SearchResultsPage() {
 
   // If fullJourneyOnly is enabled, filter to only trains with direct continuous berths
   const displayTrains = useMemo(() => {
-    if (!fullJourneyOnly) return allDisplayTrains;
-    return allDisplayTrains.filter((t) => trainHasDirectBerths(t));
-  }, [allDisplayTrains, fullJourneyOnly]);
+    if (!fullJourneyOnly) return displayTrainsBeforeFilter;
+    return displayTrainsBeforeFilter.filter((t) => trainHasDirectBerths(t));
+  }, [displayTrainsBeforeFilter, fullJourneyOnly]);
 
   const upcomingTrains = useMemo(
     () => displayTrains.filter((t) => !t.isDeparted && !t.chartStatus?.includes('DEPARTED')),
@@ -260,6 +344,13 @@ export function SearchResultsPage() {
     () => displayTrains.filter((t) => t.isDeparted || t.chartStatus?.includes('DEPARTED')),
     [displayTrains]
   );
+
+  // If no upcoming trains remain today, auto-show departed trains list so user sees train schedules
+  useEffect(() => {
+    if (upcomingTrains.length === 0 && departedTrains.length > 0) {
+      setShowDepartedList(true);
+    }
+  }, [upcomingTrains.length, departedTrains.length]);
 
   const [expandedTrainNo, setExpandedTrainNo] = useState(trainParam || null);
   const [userHasManuallyToggled, setUserHasManuallyToggled] = useState(false);
@@ -322,8 +413,13 @@ export function SearchResultsPage() {
         }
       }
     }
+    for (const ut of upcomingTrains) {
+      if (ut.travelClass && ut.totalVacantCount > 0) {
+        totals[ut.travelClass] = Math.max(totals[ut.travelClass] || 0, ut.totalVacantCount);
+      }
+    }
     return totals;
-  }, [crossTrains]);
+  }, [crossTrains, upcomingTrains]);
 
   const routeAvailableInOtherClasses = useMemo(() => {
     return Object.entries(routeClassVacancyTotals)
@@ -926,9 +1022,34 @@ export function SearchResultsPage() {
                 </button>
               </div>
             ) : (
-              <div className="p-4 rounded-xl border border-amber-300 bg-amber-50/70 text-amber-900 text-xs flex items-center gap-2.5">
-                <Clock className="w-4 h-4 text-amber-700 shrink-0" />
-                <span>All scheduled trains for today have already departed from <strong>{from}</strong>. Check departed trains below:</span>
+              <div className="p-4 sm:p-5 rounded-xl border border-amber-300 bg-amber-50/80 text-amber-950 space-y-3">
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-full bg-amber-200/80 text-amber-800 flex items-center justify-center shrink-0 mt-0.5">
+                    <Clock className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-amber-950">
+                      All Scheduled Daytime Trains for Today ({date}) Have Departed from {from}
+                    </h4>
+                    <p className="text-xs text-amber-900 mt-1 leading-relaxed">
+                      Indian Railways reservation chart bookings for today&apos;s daytime schedule are finalized and departed.
+                      You can view departed train schedules below or check tomorrow&apos;s running trains.
+                    </p>
+                  </div>
+                </div>
+                {nextDayDate && (
+                  <div className="pt-1 flex items-center gap-2.5 flex-wrap">
+                    <Button
+                      size="sm"
+                      onClick={() => handleSwitchDate(nextDayDate)}
+                      className="bg-[#1e3a8a] text-white hover:bg-[#172554] text-xs font-bold flex items-center gap-1.5 shadow-xs"
+                    >
+                      <Calendar className="w-3.5 h-3.5" />
+                      <span>Search for Tomorrow ({nextDayDate})</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+                )}
               </div>
             )}
 
@@ -968,17 +1089,22 @@ export function SearchResultsPage() {
 
                 {showDepartedList && (
                   <div className="space-y-3 opacity-80">
-                    {departedTrains.map((train) => (
-                      <TrainAccordionCard
-                        key={train.trainNumber}
-                        train={train}
-                        isOpen={false}
-                        fromStation={from}
-                        toStation={to}
-                        selectedClass={selectedClass}
-                        onSelectClass={(cls) => handleSelectClass(cls)}
-                      />
-                    ))}
+                    {departedTrains.map((train) => {
+                      const isOpen = expandedTrainNo === train.trainNumber;
+                      return (
+                        <TrainAccordionCard
+                          key={train.trainNumber}
+                          train={train}
+                          isOpen={isOpen}
+                          onToggle={() => handleToggleTrain(train.trainNumber)}
+                          onInspect={(opt) => setInspectOption(opt)}
+                          fromStation={from}
+                          toStation={to}
+                          selectedClass={selectedClass}
+                          onSelectClass={(cls) => handleSelectClass(cls)}
+                        />
+                      );
+                    })}
                   </div>
                 )}
               </div>

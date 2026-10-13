@@ -87,7 +87,7 @@ export function TrainAccordionCard({
   useEffect(() => {
     let isMounted = true;
     const initialCount = (availableBerths?.length || 0) + (allocatedBerths?.length || 0);
-    if ((isOpen || isChartActuallyPrepared) && initialCount === 0 && !isDeparted && trainNumber && fromStation) {
+    if ((isOpen || isChartActuallyPrepared) && initialCount === 0 && trainNumber && fromStation) {
       const jDate = journeyDate || new Date().toISOString().split('T')[0];
       fetchBrowserVacantBerths({
         trainNo: trainNumber,
@@ -106,7 +106,7 @@ export function TrainAccordionCard({
     return () => {
       isMounted = false;
     };
-  }, [isOpen, isChartActuallyPrepared, availableBerths, allocatedBerths, isDeparted, trainNumber, fromStation, toStation, journeyDate, currentClass]);
+  }, [isOpen, isChartActuallyPrepared, availableBerths, allocatedBerths, trainNumber, fromStation, toStation, journeyDate, currentClass]);
 
   const serverBerths = availableBerths?.length > 0 ? availableBerths : allocatedBerths;
   const rawBerths = serverBerths?.length > 0 ? serverBerths : liveBrowserBerths;
@@ -118,7 +118,7 @@ export function TrainAccordionCard({
     (b) => b.status === 'PARTIAL_JOURNEY' || (b.coveragePercent > 0 && b.coveragePercent < 100)
   ).length;
 
-  const totalVacantCount = fullJourneyCount > 0 ? fullJourneyCount : partialSegmentCount;
+  const totalVacantCount = rawBerths.length > 0 ? rawBerths.length : (train.totalVacantCount || 0);
   const hasVacancies = totalVacantCount > 0 && !isDeparted && !isTTEOnly;
   const _isFullJourney = coverageStatus === 'FULL_JOURNEY' || fullJourneyCount > 0;
   const trainClasses = train.classes || [];
@@ -386,7 +386,43 @@ export function TrainAccordionCard({
             >
               {isOpen ? 'Hide TTE Berths' : `TTE Berths (${totalVacantCount})`}
             </Button>
-          ) : null}
+          ) : isDeparted ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              rightIcon={isOpen ? ChevronUp : ChevronDown}
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggle();
+              }}
+              className={`whitespace-nowrap font-bold text-xs h-9 px-3.5 rounded-lg shrink-0 ${
+                isOpen
+                  ? 'bg-slate-700 text-white border-slate-700 hover:bg-slate-800'
+                  : 'bg-slate-100 text-slate-700 border-slate-300 hover:bg-slate-200'
+              }`}
+            >
+              {isOpen ? 'Hide Status' : 'View Status'}
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              rightIcon={isOpen ? ChevronUp : ChevronDown}
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggle();
+              }}
+              className={`whitespace-nowrap font-bold text-xs h-9 px-3.5 rounded-lg shrink-0 ${
+                isOpen
+                  ? 'bg-[#1e3a8a] text-white border-[#1e3a8a] hover:bg-[#172554]'
+                  : 'bg-slate-50 text-slate-700 border-slate-300 hover:bg-slate-100'
+              }`}
+            >
+              {isOpen ? 'Hide Details' : 'View Details'}
+            </Button>
+          )}
         </div>
 
         {/* Tier 2: Dedicated Sleek Chart & Booking Status Bar */}
@@ -436,32 +472,111 @@ export function TrainAccordionCard({
       {/* Accordion Expanded Content */}
       <div
         className={`grid transition-all duration-300 ease-in-out ${
-          isOpen && (hasVacancies || (isTTEOnly && totalVacantCount > 0))
+          isOpen
             ? 'grid-rows-[1fr] opacity-100'
             : 'grid-rows-[0fr] opacity-0 pointer-events-none'
         }`}
       >
         <div className="overflow-hidden">
           <div className="p-2 sm:p-4 border-t border-slate-200 bg-white">
-            {isTTEOnly && totalVacantCount > 0 && (
-              <div className="mb-3 px-3 py-2 rounded-lg bg-amber-50 border border-amber-300 text-amber-950 text-xs font-semibold flex items-center gap-2">
-                <Clock className="w-4 h-4 text-amber-600 shrink-0" />
-                <span>
-                  <strong>IRCTC Online Booking Closed:</strong> Final chart is finalized. These {totalVacantCount} vacant berths are available on-board directly from the Train Ticket Examiner (TTE).
-                </span>
+            {rawBerths.length > 0 ? (
+              <>
+                {isTTEOnly && totalVacantCount > 0 && (
+                  <div className="mb-3 px-3 py-2 rounded-lg bg-amber-50 border border-amber-300 text-amber-950 text-xs font-semibold flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-amber-600 shrink-0" />
+                    <span>
+                      <strong>IRCTC Online Booking Closed:</strong> Final chart is finalized. These {totalVacantCount} vacant berths are available on-board directly from the Train Ticket Examiner (TTE).
+                    </span>
+                  </div>
+                )}
+                <VacantBerthsGrid
+                  berths={rawBerths}
+                  allocatedBerths={[]}
+                  fromStation={fromStation || trainOrigin}
+                  toStation={trainDest || toStation}
+                  trainNumber={trainNumber}
+                  totalDistanceKm={distanceKm || train.distanceKm || 0}
+                  bookingChannel={train.bookingChannel}
+                  isDeparted={isDeparted}
+                  chartTimings={train.chartTimings}
+                />
+              </>
+            ) : isDeparted ? (
+              <div className="p-4 sm:p-5 rounded-xl bg-slate-50 border border-slate-200 text-center space-y-3">
+                <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-slate-200 text-slate-700">
+                  <Clock className="w-5 h-5" />
+                </div>
+                <div className="max-w-md mx-auto">
+                  <h4 className="text-sm font-bold text-slate-900">
+                    Train Departed • Booking Closed for Today
+                  </h4>
+                  <p className="text-xs text-slate-600 mt-1">
+                    This train departed from {fromStation || trainOrigin} at {departureTime} on {journeyDate || 'today'}. Final reservation chart was prepared ({finalChartText}).
+                  </p>
+                </div>
+                <div className="pt-1 flex items-center justify-center gap-2.5 flex-wrap">
+                  <a
+                    href={`/chart?trainNo=${trainNumber}&from=${fromStation || trainOrigin}&to=${toStation || trainDest}&date=${journeyDate || ''}&class=${currentClass}`}
+                    className="px-3.5 py-1.5 rounded-lg bg-[#1e3a8a] text-white hover:bg-[#172554] text-xs font-bold transition-all shadow-xs"
+                  >
+                    View Chart Composition
+                  </a>
+                  <a
+                    href={`/coach?train=${trainNumber}&from=${fromStation || trainOrigin}&to=${toStation || trainDest}&date=${journeyDate || ''}&class=${currentClass}`}
+                    className="px-3.5 py-1.5 rounded-lg bg-white border border-slate-300 text-slate-700 hover:bg-slate-100 text-xs font-bold transition-all"
+                  >
+                    View Coach Layout
+                  </a>
+                </div>
+              </div>
+            ) : (
+              <div className="p-4 sm:p-5 rounded-xl bg-slate-50 border border-slate-200 text-center space-y-3">
+                <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-amber-100 text-amber-800">
+                  <Clock className="w-5 h-5" />
+                </div>
+                <div className="max-w-md mx-auto">
+                  <h4 className="text-sm font-bold text-slate-900">
+                    {isChartActuallyPrepared
+                      ? `All Seats in ${currentClass} Booked on Chart`
+                      : 'Chart Not Prepared Yet'}
+                  </h4>
+                  <p className="text-xs text-slate-600 mt-1">
+                    {isChartActuallyPrepared
+                      ? `All berths in ${currentClass} class are currently occupied for ${fromStation || trainOrigin} ➔ ${trainDest || toStation}.`
+                      : `Reservation chart is scheduled to prepare ~4 hours prior to departure from origin station. Current availability can be booked via regular IRCTC quota.`}
+                  </p>
+                </div>
+                {availableAltClasses.length > 0 && (
+                  <div className="pt-1 flex items-center justify-center gap-2 flex-wrap">
+                    <span className="text-xs font-semibold text-slate-700">Available in other classes:</span>
+                    {availableAltClasses.slice(0, 3).map((ac) => (
+                      <button
+                        key={ac.travelClass}
+                        type="button"
+                        onClick={() => onSelectClass && onSelectClass(ac.travelClass)}
+                        className="px-2.5 py-1 rounded bg-emerald-100 text-emerald-800 hover:bg-emerald-200 text-xs font-bold"
+                      >
+                        {ac.travelClass} ({ac.availableBerthsCount})
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <div className="pt-1 flex items-center justify-center gap-2.5 flex-wrap">
+                  <a
+                    href={`/coach?train=${trainNumber}&from=${fromStation || trainOrigin}&to=${toStation || trainDest}&date=${journeyDate || ''}&class=${currentClass}`}
+                    className="px-3.5 py-1.5 rounded-lg bg-[#1e3a8a] text-white hover:bg-[#172554] text-xs font-bold transition-all shadow-xs"
+                  >
+                    View Coach Layout
+                  </a>
+                  <a
+                    href={`/chart?trainNo=${trainNumber}&from=${fromStation || trainOrigin}&to=${toStation || trainDest}&date=${journeyDate || ''}&class=${currentClass}`}
+                    className="px-3.5 py-1.5 rounded-lg bg-white border border-slate-300 text-slate-700 hover:bg-slate-100 text-xs font-bold transition-all"
+                  >
+                    View Full Chart
+                  </a>
+                </div>
               </div>
             )}
-            <VacantBerthsGrid
-              berths={rawBerths}
-              allocatedBerths={[]}
-              fromStation={fromStation || trainOrigin}
-              toStation={trainDest || toStation}
-              trainNumber={trainNumber}
-              totalDistanceKm={distanceKm || train.distanceKm || 0}
-              bookingChannel={train.bookingChannel}
-              isDeparted={isDeparted}
-              chartTimings={train.chartTimings}
-            />
           </div>
         </div>
       </div>
