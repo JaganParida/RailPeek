@@ -13,7 +13,7 @@ import {
 import { MOCK_BERTH_OCCUPANCIES } from '../mockData/availability.mock.js';
 import { ApiError } from '../utils/apiResponse.js';
 import { fetchLiveCoachComposition, fetchLiveTrainComposition, fetchLiveVacantBerths } from './irctcLive.service.js';
-import { getTrainRouteStops, resolveJourneyOverlap } from './routeResolver.service.js';
+import { getTrainRouteStops, resolveJourneyOverlap, TERMINAL_CLUSTERS } from './routeResolver.service.js';
 import { getCachedAvailability } from './availability.service.js';
 import { env } from '../config/env.js';
 
@@ -112,7 +112,8 @@ export async function getCoachVacancy({
   const normTrain = String(trainNumber || '').trim();
   const normCoach = String(coachId || '').toUpperCase().trim();
   const journeyDate = date ? date.trim().slice(0, 10) : new Date().toISOString().slice(0, 10);
-  const normClass = travelClass ? travelClass.toUpperCase().trim() : getCoachClass(normCoach);
+  const inferredClass = getCoachClass(normCoach);
+  let normClass = inferredClass || (travelClass ? travelClass.toUpperCase().trim() : '3A');
 
   const provider = getRailwayProvider();
   let routeData = null;
@@ -188,10 +189,27 @@ export async function getCoachVacancy({
   let fromStation = from ? from.toUpperCase().trim() : route[0].stationCode;
   let toStation = to ? to.toUpperCase().trim() : route[route.length - 1].stationCode;
 
+  // Terminal cluster resolution (e.g. user searched NDLS, but train halts at NZM/ANVT)
+  if (!route.some((s) => s.stationCode === fromStation) && TERMINAL_CLUSTERS[fromStation]) {
+    const cluster = TERMINAL_CLUSTERS[fromStation];
+    const matchStop = route.find((s) => cluster.includes(s.stationCode));
+    if (matchStop) {
+      fromStation = matchStop.stationCode;
+    }
+  }
+
+  if (!route.some((s) => s.stationCode === toStation) && TERMINAL_CLUSTERS[toStation]) {
+    const cluster = TERMINAL_CLUSTERS[toStation];
+    const matchStop = route.find((s) => cluster.includes(s.stationCode));
+    if (matchStop) {
+      toStation = matchStop.stationCode;
+    }
+  }
+
   let journey = resolveJourneySegment(route, fromStation, toStation);
   if (!journey.valid) {
-    // If the requested stations don't sequentially match this specific train's stops
-    // (e.g. user searched ANVT but train terminates at NDLS), gracefully adapt to valid stops
+    // If the requested stations don't sequentially match this specific train's stops,
+    // gracefully adapt to valid stops
     const fromStop = route.find((s) => s.stationCode === fromStation);
     const toStop = route.find((s) => s.stationCode === toStation);
 
@@ -330,6 +348,17 @@ export async function getCoachVacancy({
         };
       }
 
+      // Update coach class from verified live composition if available
+      if (liveComp && liveComp.success && Array.isArray(liveComp.coaches)) {
+        const compCoach = liveComp.coaches.find(
+          (c) => String(c.coachName || '').toUpperCase().trim() === normCoach
+        );
+        if (compCoach?.classCode) {
+          normClass = compCoach.classCode;
+          baseBerths = generateCoachBerths(normCoach, normClass, normTrain);
+        }
+      }
+
       // Extract verified vacant berths for this specific coach from authentic IRCTC live data
       let coachVacantBerths = [];
       try {
@@ -401,24 +430,17 @@ export async function getCoachVacancy({
             vbTo,
           });
 
-          if (!overlap.overlaps) {
-            return {
-              ...b,
-              status: 'UNAVAILABLE',
-              statusLabel: 'Booked / Unavailable',
-              coveragePercent: 0,
-              availableFrom: vbFrom || userFrom,
-              availableTo: vbTo || userTo,
-              occupiedSegments: [{ from: userFrom, to: userTo }],
-              vacantSegments: [],
-              suitabilityReason: `Occupied/Unavailable on your boarding route from ${userFrom}.`,
-            };
+          if (overlap.overlaps) {
+            isFull = overlap.isFull;
+            coveragePercent = overlap.coveragePercent;
+            actualFrom = overlap.actualFrom;
+            actualTo = overlap.actualTo;
+          } else {
+            isFull = false;
+            coveragePercent = 0;
+            actualFrom = vbFrom;
+            actualTo = vbTo;
           }
-
-          isFull = overlap.isFull;
-          coveragePercent = overlap.coveragePercent;
-          actualFrom = overlap.actualFrom;
-          actualTo = overlap.actualTo;
         }
 
         const bStatus = isFull ? 'FULL_JOURNEY' : 'PARTIAL_JOURNEY';
@@ -573,7 +595,14 @@ export async function getTrainCoachesSummary(trainNumber, options = {}) {
   }
 
   const todayStr = date ? date.slice(0, 10) : new Date().toISOString().slice(0, 10);
-  const boardingStn = from || routeData?.route?.[0]?.stationCode || 'BBS';
+  let boardingStn = from || routeData?.route?.[0]?.stationCode || 'BBS';
+  if (routeData?.route && !routeData.route.some((s) => s.stationCode === boardingStn) && TERMINAL_CLUSTERS[boardingStn]) {
+    const cluster = TERMINAL_CLUSTERS[boardingStn];
+    const matchStop = routeData.route.find((s) => cluster.includes(s.stationCode));
+    if (matchStop) {
+      boardingStn = matchStop.stationCode;
+    }
+  }
   const destStn = to || routeData?.route?.[routeData.route.length - 1]?.stationCode || 'DEST';
 
   let liveCoachesList = [];

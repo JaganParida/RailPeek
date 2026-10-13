@@ -319,8 +319,11 @@ export function computeConnectedItinerary({
   // If no 100% seamless chain exists, find the optimal sequence of non-overlapping
   // segments that maximizes total travel distance and inserts intelligent GAP guidance!
 
-  // Sort candidate segments along train direction
+  // Sort candidate segments along train direction, prioritizing boarding station segments
   const sortedCandidates = [...candidates].sort((x, y) => {
+    const xIsBoarding = x.isBoardingSegment || x.from === normFrom;
+    const yIsBoarding = y.isBoardingSegment || y.from === normFrom;
+    if (xIsBoarding !== yIsBoarding) return xIsBoarding ? -1 : 1;
     if (x.fromStopIndex !== y.fromStopIndex) return x.fromStopIndex - y.fromStopIndex;
     return (y.distanceKm || 0) - (x.distanceKm || 0);
   });
@@ -344,6 +347,23 @@ export function computeConnectedItinerary({
   let stepCounter = 1;
   let totalCoveredKm = 0;
   let hasGaps = false;
+
+  // Opening gap if first segment does not start at boarding station
+  const firstSeg = chosenSegments[0];
+  if (firstSeg && firstSeg.from !== normFrom && !firstSeg.isBoardingSegment) {
+    hasGaps = true;
+    const openingGapDist = Math.max(50, Math.abs(firstSeg.fromStopIndex * 80));
+    items.push({
+      type: 'GAP',
+      from: normFrom,
+      to: firstSeg.from,
+      fromName: normFrom,
+      toName: firstSeg.fromName || firstSeg.from,
+      distanceKm: openingGapDist,
+      isShortGap: openingGapDist <= 150,
+      tip: `Boarding without seat (~${openingGapDist} km to ${firstSeg.from}): Reserved berth starts at ${firstSeg.from}. Speak to the on-train TTE on boarding or travel unreserved until ${firstSeg.from}.`,
+    });
+  }
 
   for (let i = 0; i < chosenSegments.length; i++) {
     const seg = chosenSegments[i];
@@ -399,7 +419,24 @@ export function computeConnectedItinerary({
     });
   }
 
+  // Closing gap if last segment does not reach final destination
+  const lastSeg = chosenSegments[chosenSegments.length - 1];
   const tripKm = totalTripDistanceKm || totalCoveredKm || 1;
+  if (lastSeg && lastSeg.to !== normTo && !lastSeg.isDestinationSegment) {
+    hasGaps = true;
+    const remainingKm = Math.max(50, Math.max(0, tripKm - totalCoveredKm));
+    items.push({
+      type: 'GAP',
+      from: lastSeg.to,
+      to: normTo,
+      fromName: lastSeg.toName || lastSeg.to,
+      toName: normTo,
+      distanceKm: remainingKm,
+      isShortGap: remainingKm <= 150,
+      tip: `Remaining journey (${remainingKm} km to ${normTo}): Reserved berth ends at ${lastSeg.to}. Speak with the on-train TTE for berth allotment or continue unreserved.`,
+    });
+  }
+
   const coveragePercent = Math.min(100, Math.round((totalCoveredKm / tripKm) * 100));
   const seatLegs = items.filter((it) => it.type === 'SEAT');
   const gapItems = items.filter((it) => it.type === 'GAP');

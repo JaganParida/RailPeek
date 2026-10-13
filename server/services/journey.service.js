@@ -890,9 +890,13 @@ export async function findUsableBerths(params) {
                     toStationName: overlap.toStationName || overlap.actualTo,
                     fromStopIndex: typeof overlap.fromStopIndex === 'number' ? overlap.fromStopIndex : 99,
                     toStopIndex: typeof overlap.toStopIndex === 'number' ? overlap.toStopIndex : 99,
+                    isBoardingSegment: Boolean(overlap.isBoardingSegment),
+                    isDestinationSegment: Boolean(overlap.isDestinationSegment),
+                    isBoardingAvailable: Boolean(overlap.isBoardingSegment),
+                    isDeboardingAvailable: Boolean(overlap.isDestinationSegment),
                     segmentDistanceKm: overlap.segmentDistanceKm || Math.round(Number(train.distanceKm || 1000) * (overlap.coveragePercent / 100)),
                     coveragePercent: overlap.coveragePercent,
-                    score: isFull ? 100 : Math.round(overlap.coveragePercent / 2),
+                    score: isFull ? 100 : Math.round(overlap.coveragePercent / 2) + (overlap.isBoardingSegment ? 15 : 0),
                     reasons: [
                       {
                         code: isFull ? 'FULL_JOURNEY_VACANT' : 'PARTIAL_JOURNEY_VACANT',

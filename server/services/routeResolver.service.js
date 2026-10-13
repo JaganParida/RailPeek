@@ -5,7 +5,7 @@ const routeCache = new Map();
 let stationDict = null;
 
 // Railway Terminal Clusters where different stations serve the same metropolitan area
-const TERMINAL_CLUSTERS = {
+export const TERMINAL_CLUSTERS = {
   NDLS: ['NDLS', 'NZM', 'ANVT', 'DLI', 'DEE'],
   NZM: ['NDLS', 'NZM', 'ANVT', 'DLI', 'DEE'],
   ANVT: ['NDLS', 'NZM', 'ANVT', 'DLI', 'DEE'],
@@ -306,21 +306,7 @@ export function resolveJourneyOverlap({ routeStops, fromCode, toCode, vbFrom, vb
     };
   }
 
-  // Strict Passenger Usability Rule:
-  // A passenger boards at `fromIdx`. If the berth is NOT vacant at `fromIdx` (vStart > fromIdx),
-  // the passenger has no seat at boarding! Never suggest random mid-route hops where passenger is seatless at departure.
-  if (vStart > fromIdx) {
-    return {
-      overlaps: false,
-      isFull: false,
-      coveragePercent: 0,
-      actualFrom: normVbFrom,
-      actualTo: normVbTo,
-      status: 'UNAVAILABLE',
-    };
-  }
-
-  // Calculate segment overlap starting from passenger boarding point
+  // Calculate segment overlap between berth availability [vStart, vEnd] and passenger journey [fromIdx, toIdx]
   const overlapStart = Math.max(vStart, fromIdx);
   const overlapEnd = Math.min(vEnd, toIdx);
 
@@ -336,6 +322,8 @@ export function resolveJourneyOverlap({ routeStops, fromCode, toCode, vbFrom, vb
   }
 
   const isFull = vStart <= fromIdx && vEnd >= toIdx;
+  const isBoardingSegment = vStart <= fromIdx;
+  const isDestinationSegment = vEnd >= toIdx;
   const stopFrom = Array.isArray(routeStops) ? routeStops[overlapStart] : null;
   const stopTo = Array.isArray(routeStops) ? routeStops[overlapEnd] : null;
   const actualFrom = stopFrom?.stationCode || normFrom;
@@ -354,6 +342,8 @@ export function resolveJourneyOverlap({ routeStops, fromCode, toCode, vbFrom, vb
   return {
     overlaps: true,
     isFull,
+    isBoardingSegment,
+    isDestinationSegment,
     coveragePercent,
     actualFrom,
     actualTo,

@@ -318,12 +318,13 @@ export function VacantBerthsGrid({
           item: it,
         });
       } else if (it.type === 'GAP') {
+        const isClosingGap = it.to === userDest;
         stages.push({
           id: `gap-${i}-${it.from}-${it.to}`,
           type: 'GAP',
           stationCode: it.from,
-          stationLabel: 'No Seat',
-          shortLabel: 'No Seat',
+          stationLabel: isClosingGap ? 'Seat Ends' : 'No Seat',
+          shortLabel: isClosingGap ? 'Ends' : 'No Seat',
           nodeType: 'GAP_START',
           isGapTrack: true,
           item: it,
@@ -331,49 +332,16 @@ export function VacantBerthsGrid({
       }
     }
 
-    const lastItem = items[items.length - 1];
-    const userDest = (toStation || '').toUpperCase();
-    const lastTo = (lastItem?.to || '').toUpperCase();
-
-    if (lastItem && lastTo && userDest && lastTo !== userDest) {
-      // Reserved berth ends before user destination (e.g. seat ends at SKT, user destination is BBS)
-      stages.push({
-        id: `seat-end-${lastTo}`,
-        type: 'SEAT_END',
-        stationCode: lastTo,
-        stationLabel: 'Seat Ends',
-        shortLabel: 'Ends',
-        nodeType: 'GAP_START',
-        isGapTrack: true,
-        item: {
-          from: lastTo,
-          to: userDest,
-          tip: `Reserved berth ends at ${lastTo}. For the remaining journey to ${userDest}, speak to the train TTE on board or continue unreserved.`,
-        },
-      });
-
-      stages.push({
-        id: `dest-final-${userDest}`,
-        type: 'DESTINATION',
-        stationCode: userDest,
-        stationLabel: 'Destination',
-        shortLabel: 'Arrival',
-        nodeType: 'END',
-        isGapTrack: false,
-        item: null,
-      });
-    } else {
-      stages.push({
-        id: `dest-final-${userDest || lastTo}`,
-        type: 'DESTINATION',
-        stationCode: userDest || lastTo,
-        stationLabel: 'Destination',
-        shortLabel: 'Arrival',
-        nodeType: 'END',
-        isGapTrack: false,
-        item: null,
-      });
-    }
+    stages.push({
+      id: `dest-final-${userDest}`,
+      type: 'DESTINATION',
+      stationCode: userDest,
+      stationLabel: 'Destination',
+      shortLabel: 'Arrival',
+      nodeType: 'END',
+      isGapTrack: false,
+      item: null,
+    });
 
     return stages;
   }, [connectedItinerary, toStation]);
@@ -758,10 +726,17 @@ export function VacantBerthsGrid({
                               </p>
                             </div>
 
-                            <div className="text-[11px] text-emerald-800 font-semibold flex items-center gap-1.5 pt-1.5 border-t border-amber-200/60">
-                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                              <span>Reserved seat resumes from <strong className="text-slate-900">{stage.item.to}</strong></span>
-                            </div>
+                            {stage.item.to !== (toStation || '').toUpperCase() ? (
+                              <div className="text-[11px] text-emerald-800 font-semibold flex items-center gap-1.5 pt-1.5 border-t border-amber-200/60">
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                <span>Reserved seat resumes from <strong className="text-slate-900">{stage.item.to}</strong></span>
+                              </div>
+                            ) : (
+                              <div className="text-[11px] text-slate-700 font-medium flex items-center gap-1.5 pt-1.5 border-t border-amber-200/60">
+                                <MapPin className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                                <span>Remaining travel to your destination <strong className="text-slate-900">{toStation}</strong></span>
+                              </div>
+                            )}
                           </div>
                         </div>
                       )}
