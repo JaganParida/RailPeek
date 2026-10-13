@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { ChevronDown, ChevronUp, ShieldCheck, Train, CheckCircle2, Clock } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -19,6 +19,9 @@ export function TrainAccordionCard({
   const [liveBrowserComp, setLiveBrowserComp] = useState(null);
   const [liveBrowserBerths, setLiveBrowserBerths] = useState([]);
 
+  const compAttemptedRef = useRef(new Set());
+  const vacantAttemptedRef = useRef(new Set());
+
   const trainNumber = train?.trainNumber;
   const isDeparted = Boolean(
     train?.isDeparted ||
@@ -29,8 +32,16 @@ export function TrainAccordionCard({
   const journeyDate = train?.journeyDate;
 
   useEffect(() => {
+    compAttemptedRef.current.clear();
+    vacantAttemptedRef.current.clear();
+  }, [trainNumber, journeyDate, fromStation]);
+
+  useEffect(() => {
     let isMounted = true;
     if (train && !chartOneDate && !isDeparted && trainNumber && fromStation) {
+      if (compAttemptedRef.current.has(trainNumber)) return;
+      compAttemptedRef.current.add(trainNumber);
+
       const jDate = journeyDate || new Date().toISOString().split('T')[0];
       fetchBrowserTrainComposition(trainNumber, jDate, fromStation)
         .then((comp) => {
@@ -43,7 +54,7 @@ export function TrainAccordionCard({
     return () => {
       isMounted = false;
     };
-  }, [train, trainNumber, fromStation, chartOneDate, isDeparted, journeyDate]);
+  }, [trainNumber, fromStation, chartOneDate, isDeparted, journeyDate]);
 
   if (!train) return null;
 
@@ -87,7 +98,12 @@ export function TrainAccordionCard({
   useEffect(() => {
     let isMounted = true;
     const initialCount = (availableBerths?.length || 0) + (allocatedBerths?.length || 0);
+    const vKey = `${trainNumber}:${currentClass}:${journeyDate || 'today'}`;
+
     if ((isOpen || isChartActuallyPrepared) && initialCount === 0 && trainNumber && fromStation) {
+      if (vacantAttemptedRef.current.has(vKey)) return;
+      vacantAttemptedRef.current.add(vKey);
+
       const jDate = journeyDate || new Date().toISOString().split('T')[0];
       fetchBrowserVacantBerths({
         trainNo: trainNumber,
@@ -106,7 +122,7 @@ export function TrainAccordionCard({
     return () => {
       isMounted = false;
     };
-  }, [isOpen, isChartActuallyPrepared, availableBerths, allocatedBerths, trainNumber, fromStation, toStation, journeyDate, currentClass]);
+  }, [isOpen, isChartActuallyPrepared, availableBerths?.length, allocatedBerths?.length, trainNumber, fromStation, toStation, journeyDate, currentClass]);
 
   const serverBerths = availableBerths?.length > 0 ? availableBerths : allocatedBerths;
   const rawBerths = serverBerths?.length > 0 ? serverBerths : liveBrowserBerths;

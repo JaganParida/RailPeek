@@ -1,10 +1,52 @@
 import { Router } from 'express';
 import { coachVacancyQuerySchema } from '../validators/coach.validator.js';
 import { getCoachVacancy, getTrainCoachesSummary } from '../services/coach.service.js';
+import {
+  fetchLiveTrainComposition,
+  fetchLiveVacantBerths,
+  fetchLiveCoachComposition,
+} from '../services/irctcLive.service.js';
 import { trainSearchLimiter } from '../middleware/rateLimiter.js';
 import { successResponse, ApiError } from '../utils/apiResponse.js';
 
 export const coachRouter = Router();
+
+/**
+ * POST /api/v1/coaches/irctc/trainComposition
+ */
+coachRouter.post('/irctc/trainComposition', async (req, res, next) => {
+  try {
+    const { trainNo, jDate, boardingStation } = req.body || {};
+    const result = await fetchLiveTrainComposition(trainNo, jDate, boardingStation);
+    return res.json(successResponse(result));
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/v1/coaches/irctc/vacantBerth
+ */
+coachRouter.post('/irctc/vacantBerth', async (req, res, next) => {
+  try {
+    const result = await fetchLiveVacantBerths(req.body || {});
+    return res.json(successResponse(result));
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/v1/coaches/irctc/coachComposition
+ */
+coachRouter.post('/irctc/coachComposition', async (req, res, next) => {
+  try {
+    const result = await fetchLiveCoachComposition(req.body || {});
+    return res.json(successResponse(result));
+  } catch (err) {
+    next(err);
+  }
+});
 
 /**
  * GET /api/v1/coaches/:trainNumber

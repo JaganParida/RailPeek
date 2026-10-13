@@ -25,8 +25,6 @@ import { CrossTrainMatrix } from '@/components/results/CrossTrainMatrix';
 import { AlternativeDateBanner } from '@/components/results/AlternativeDateBanner';
 import { SuggestedAlternativeBanner } from '@/components/results/SuggestedAlternativeBanner';
 import { BerthInspectDialog } from '@/components/ui/BerthInspectDialog';
-import { fetchBrowserTrainComposition, fetchBrowserVacantBerths } from '@/services/clientIrctc';
-import { mapIrctcVacantBerths } from '@/services/clientCoachLayout';
 
 export function SearchResultsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -55,7 +53,6 @@ export function SearchResultsPage() {
   const [showMatrix, setShowMatrix] = useState(false);
   const [inspectOption, setInspectOption] = useState(null);
   const [showDepartedList, setShowDepartedList] = useState(false);
-  const [clientEnrichedMap, setClientEnrichedMap] = useState({});
 
   const nextDayDate = useMemo(() => {
     if (!date) return '';
@@ -244,75 +241,7 @@ export function SearchResultsPage() {
     return '';
   }, [activeTrain, effectiveBestMatch, allDisplayTrains, requestedTrainNotice]);
 
-  // Live client-side IRCTC enrichment when server (e.g. Vercel) is blocked or lacks berths
-  useEffect(() => {
-    if (!from || !to || !date || !selectedClass || allDisplayTrains.length === 0) return;
-    let isMounted = true;
-
-    // Fetch live IRCTC chart composition & vacant berths for operating trains
-    const targets = allDisplayTrains.slice(0, 8);
-    targets.forEach(async (t) => {
-      const tNum = t.trainNumber;
-      if (!tNum) return;
-
-      try {
-        const [comp, rawVb] = await Promise.allSettled([
-          fetchBrowserTrainComposition(tNum, date, from),
-          fetchBrowserVacantBerths({
-            trainNo: tNum,
-            jDate: date,
-            boardingStation: from,
-            cls: selectedClass,
-          }),
-        ]);
-
-        if (!isMounted) return;
-
-        const compResult = comp.status === 'fulfilled' ? comp.value : null;
-        const vbResult = rawVb.status === 'fulfilled' ? rawVb.value : null;
-
-        const mappedBerths = Array.isArray(vbResult) && vbResult.length > 0
-          ? mapIrctcVacantBerths(vbResult, from, to)
-          : [];
-
-        if (compResult || mappedBerths.length > 0) {
-          setClientEnrichedMap((prev) => ({
-            ...prev,
-            [tNum]: {
-              isChartPrepared: Boolean(compResult?.chartOneDate),
-              chartOneDate: compResult?.chartOneDate || prev[tNum]?.chartOneDate,
-              chartTwoDate: compResult?.chartTwoDate || prev[tNum]?.chartTwoDate,
-              availableBerths: mappedBerths.length > 0 ? mappedBerths : (prev[tNum]?.availableBerths || []),
-              totalVacantCount: mappedBerths.length > 0 ? mappedBerths.length : (prev[tNum]?.totalVacantCount || 0),
-            },
-          }));
-        }
-      } catch (_err) {
-        // Safe catch
-      }
-    });
-
-    return () => {
-      isMounted = false;
-    };
-  }, [from, to, date, selectedClass, allDisplayTrains]);
-
-  const displayTrainsBeforeFilter = useMemo(() => {
-    return allDisplayTrains.map((t) => {
-      const enriched = clientEnrichedMap[t.trainNumber];
-      if (!enriched) return t;
-      const finalBerths = enriched.availableBerths?.length > 0 ? enriched.availableBerths : t.availableBerths;
-      const finalCount = enriched.totalVacantCount > 0 ? enriched.totalVacantCount : (finalBerths?.length || t.totalVacantCount || 0);
-      return {
-        ...t,
-        isChartPrepared: t.isChartPrepared || enriched.isChartPrepared,
-        chartOneDate: t.chartOneDate || enriched.chartOneDate,
-        chartTwoDate: t.chartTwoDate || enriched.chartTwoDate,
-        availableBerths: finalBerths,
-        totalVacantCount: finalCount,
-      };
-    });
-  }, [allDisplayTrains, clientEnrichedMap]);
+  const displayTrainsBeforeFilter = allDisplayTrains;
 
   // Check if ANY operating upcoming train on this route has direct continuous berths
   const hasAnyDirectTrains = useMemo(() => {
