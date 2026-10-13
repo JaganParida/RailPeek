@@ -715,7 +715,7 @@ export async function findUsableBerths(params) {
       }
 
       const chartTimings = calculateChartTimings(date, train.departureTime, liveComp, departed, isBeforeRemote, originDepTime);
-      const isChartReallyPrepared = isPrepared || Boolean(chartTimings.isFirstChartDone);
+      const isChartReallyPrepared = liveComp ? Boolean(liveComp.isPrepared) : false;
 
       if (isChartReallyPrepared && !departed) {
         chartStatus = chartTimings.isSecondChartDone ? 'FINAL_CHART' : 'CHART_PREPARED';
@@ -770,14 +770,11 @@ export async function findUsableBerths(params) {
         let liveBerths = [];
         let liveVacant = null;
 
-        if ((liveComp?.chartTwoDate || chartTimings.isSecondChartDone) && isBeforeRemote) {
-          liveBerths = [];
-        } else {
-          try {
-            const routeStops = await getTrainRouteStops(tNum);
-            liveVacant = await fetchLiveVacantBerths({
-              trainNo: tNum,
-              jDate: date,
+        try {
+          const routeStops = await getTrainRouteStops(tNum);
+          liveVacant = await fetchLiveVacantBerths({
+            trainNo: tNum,
+            jDate: date,
               boardingStation: fromCode,
               remoteStation: liveComp?.remote || fromCode,
               trainSourceStation: liveComp?.from || train.origin || fromCode,

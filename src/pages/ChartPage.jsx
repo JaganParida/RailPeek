@@ -6,6 +6,7 @@ import {
   Search,
   AlertCircle,
   ChevronDown,
+  Clock,
 } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -299,6 +300,21 @@ export function ChartPage() {
               {coachVacancyQuery.error.message || 'Please verify the train number and date.'}
             </p>
           </Card>
+        )}
+
+        {/* Chart Status Notification Banner */}
+        {coachData && coachData.isChartPrepared === false && (
+          <div className="p-3 sm:p-3.5 rounded-xl border border-amber-200 bg-amber-50 text-amber-900 flex items-start gap-2.5 sm:gap-3 shadow-2xs">
+            <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-amber-600 shrink-0 mt-0.5" />
+            <div className="min-w-0">
+              <h4 className="text-xs sm:text-sm font-bold text-amber-900">
+                Reservation Chart Not Prepared Yet
+              </h4>
+              <p className="text-[11px] sm:text-xs text-amber-700 mt-0.5 leading-relaxed">
+                {coachData.message || `IRCTC reservation chart for Train ${selectedTrain} on ${selectedDate} has not been prepared yet. First chart is officially finalized ~4 hours before train departure.`}
+              </p>
+            </div>
+          </div>
         )}
 
         {/* Main Interactive Coach Map */}

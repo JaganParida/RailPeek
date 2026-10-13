@@ -15,6 +15,7 @@ import { ApiError } from '../utils/apiResponse.js';
 import { fetchLiveCoachComposition, fetchLiveTrainComposition, fetchLiveVacantBerths } from './irctcLive.service.js';
 import { getTrainRouteStops, resolveJourneyOverlap } from './routeResolver.service.js';
 import { getCachedAvailability } from './availability.service.js';
+import { env } from '../config/env.js';
 
 /**
  * Generates deterministic realistic occupancies if coach is not explicitly hardcoded.
@@ -239,8 +240,9 @@ export async function getCoachVacancy({
 
     // Check if live IRCTC chart has berth-level data for this coach
     try {
+      let liveComp = null;
       try {
-        const liveComp = await fetchLiveTrainComposition(normTrain, journeyDate, fromStation);
+        liveComp = await fetchLiveTrainComposition(normTrain, journeyDate, fromStation);
         if (liveComp && liveComp.success) {
           if (liveComp.remote) remoteStation = liveComp.remote;
           if (liveComp.from) trainSourceStation = liveComp.from;
@@ -263,31 +265,98 @@ export async function getCoachVacancy({
         // Fallback if live composition error occurs
       }
 
-      // 1. Fetch real coach composition from IRCTC
-      let liveCoach = { success: false };
-      try {
-        liveCoach = await fetchLiveCoachComposition({
-          trainNo: normTrain,
-          jDate: journeyDate,
-          boardingStation: fromStation,
-          remoteStation,
-          trainSourceStation,
-          coach: normCoach,
-          cls: normClass,
-        });
-      } catch (_e) {}
+      // If IRCTC explicitly indicates that the chart is not prepared yet, return immediately without stalling
+      if (liveComp && liveComp.isPrepared === false) {
+        return {
+          trainNumber: normTrain,
+          trainName: liveComp?.trainName || train.name,
+          journeyDate,
+          fromStation,
+          fromStationName: journey.fromStop?.stationName || fromStation,
+          toStation,
+          toStationName: journey.toStop?.stationName || toStation,
+          coachId: normCoach,
+          travelClass: normClass,
+          totalBerths: baseBerths.length,
+          totalBays: groupBerthsIntoBays(baseBerths, normClass).length,
+          isChartPrepared: false,
+          chartStatus: 'CHART_NOT_PREPARED',
+          message: `Reservation chart is not prepared yet by IRCTC for Train ${normTrain} on ${journeyDate}. As per Indian Railways rules, the first reservation chart is officially prepared 4 hours before train departure.`,
+          summary: {
+            totalBerths: baseBerths.length,
+            fullJourneyCount: 0,
+            partialCount: 0,
+            unavailableCount: baseBerths.length,
+            availableTotal: 0,
+            vacancyRate: 0,
+            byType: {
+              '1A': { fullJourney: 0 },
+              '2A': { fullJourney: 0 },
+              '3A': { fullJourney: 0 },
+              'SL': { fullJourney: 0 },
+            },
+          },
+          bays: groupBerthsIntoBays(
+            baseBerths.map((b) => ({
+              ...b,
+              status: 'UNAVAILABLE',
+              statusLabel: 'Chart Not Prepared',
+              coveragePercent: 0,
+              occupiedSegments: [],
+              vacantSegments: [],
+            })),
+            normClass
+          ),
+          berths: baseBerths.map((b) => ({
+            ...b,
+            status: 'UNAVAILABLE',
+            statusLabel: 'Chart Not Prepared',
+            coveragePercent: 0,
+            occupiedSegments: [],
+            vacantSegments: [],
+          })),
+          availableCoaches: getTrainCoaches(normTrain),
+          routeStops: route.map((s) => ({
+            stationCode: s.stationCode,
+            stationName: s.stationName,
+            stopIndex: s.stopIndex,
+            arrival: s.arrival,
+            departure: s.departure,
+            distanceKm: s.distanceKm,
+          })),
+          source: 'live',
+          isDemo: false,
+          isLiveChart: false,
+          fetchedAt: new Date().toISOString(),
+        };
+      }
 
-      // 2. Fetch real class-wise vacant berths from IRCTC (exact endpoint used by find-berths)
+      // Fetch real coach composition and vacant berths in parallel with bounded timeout
+      let liveCoach = { success: false };
       let liveVacant = { success: false };
       try {
-        liveVacant = await fetchLiveVacantBerths({
-          trainNo: normTrain,
-          jDate: journeyDate,
-          boardingStation: fromStation,
-          remoteStation,
-          trainSourceStation,
-          cls: normClass,
-        });
+        const [coachSettled, vacantSettled] = await Promise.allSettled([
+          fetchLiveCoachComposition({
+            trainNo: normTrain,
+            jDate: journeyDate,
+            boardingStation: fromStation,
+            remoteStation,
+            trainSourceStation,
+            coach: normCoach,
+            cls: normClass,
+          }),
+          fetchLiveVacantBerths({
+            trainNo: normTrain,
+            jDate: journeyDate,
+            boardingStation: fromStation,
+            remoteStation,
+            trainSourceStation,
+            cls: normClass,
+          }),
+        ]);
+
+        if (coachSettled.status === 'fulfilled') liveCoach = coachSettled.value || { success: false };
+        if (vacantSettled.status === 'fulfilled') liveVacant = vacantSettled.value || { success: false };
       } catch (_e) {}
 
       // Extract verified vacant berths for this specific coach
@@ -700,7 +769,7 @@ export async function getTrainCoachesSummary(trainNumber, options = {}) {
 
   // Calculate live coach vacancy counts across route segments
   const coachVacancyMap = {};
-  if (from && routeData?.route?.length > 0) {
+  if (from && routeData?.route?.length > 0 && liveCompData?.isPrepared !== false) {
     try {
       const preferredClass = options.travelClass || options.class;
       const classesToCheck = preferredClass
