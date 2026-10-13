@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 
 const app = express();
-const PORT = process.env.BRIDGE_PORT || 5050;
+const PORT = process.env.PORT || process.env.BRIDGE_PORT || 5050;
 const BRIDGE_TOKEN = process.env.IRCTC_BRIDGE_TOKEN || 'railpeek-live-bridge';
 
 app.use(cors());
