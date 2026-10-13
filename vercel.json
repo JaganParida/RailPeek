@@ -3,18 +3,6 @@
   "regions": ["bom1"],
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
-  "redirects": [
-    {
-      "source": "/",
-      "destination": "https://railpeek.jaganparidaa.workers.dev/",
-      "permanent": false
-    },
-    {
-      "source": "/((?!api/).*)",
-      "destination": "https://railpeek.jaganparidaa.workers.dev/$1",
-      "permanent": false
-    }
-  ],
   "rewrites": [
     {
       "source": "/api/(.*)",

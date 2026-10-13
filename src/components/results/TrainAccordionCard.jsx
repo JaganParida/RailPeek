@@ -3,7 +3,8 @@ import { ChevronDown, ChevronUp, ShieldCheck, Train, CheckCircle2, Clock } from 
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { VacantBerthsGrid } from '@/components/results/VacantBerthsGrid';
-import { fetchBrowserTrainComposition } from '@/services/clientIrctc';
+import { fetchBrowserTrainComposition, fetchBrowserVacantBerths } from '@/services/clientIrctc';
+import { mapIrctcVacantBerths } from '@/services/clientCoachLayout';
 
 export function TrainAccordionCard({
   train,
@@ -16,6 +17,7 @@ export function TrainAccordionCard({
   onSelectClass,
 }) {
   const [liveBrowserComp, setLiveBrowserComp] = useState(null);
+  const [liveBrowserBerths, setLiveBrowserBerths] = useState([]);
 
   const trainNumber = train?.trainNumber;
   const isDeparted = Boolean(
@@ -79,7 +81,35 @@ export function TrainAccordionCard({
     (train.chartTimings?.isSecondChartDone && !train.chartTimings?.canBookOnline && !isDeparted)
   );
 
-  const rawBerths = availableBerths?.length > 0 ? availableBerths : allocatedBerths;
+  const currentClass = train.travelClass || selectedClass || '3A';
+
+  // Live browser IRCTC vacant berths fetcher when server reports 0 berths
+  useEffect(() => {
+    let isMounted = true;
+    const initialCount = (availableBerths?.length || 0) + (allocatedBerths?.length || 0);
+    if ((isOpen || isChartActuallyPrepared) && initialCount === 0 && !isDeparted && trainNumber && fromStation) {
+      const jDate = journeyDate || new Date().toISOString().split('T')[0];
+      fetchBrowserVacantBerths({
+        trainNo: trainNumber,
+        jDate,
+        boardingStation: fromStation,
+        cls: currentClass,
+      })
+        .then((vbList) => {
+          if (isMounted && Array.isArray(vbList) && vbList.length > 0) {
+            const mapped = mapIrctcVacantBerths(vbList, fromStation, toStation);
+            setLiveBrowserBerths(mapped);
+          }
+        })
+        .catch(() => {});
+    }
+    return () => {
+      isMounted = false;
+    };
+  }, [isOpen, isChartActuallyPrepared, availableBerths, allocatedBerths, isDeparted, trainNumber, fromStation, toStation, journeyDate, currentClass]);
+
+  const serverBerths = availableBerths?.length > 0 ? availableBerths : allocatedBerths;
+  const rawBerths = serverBerths?.length > 0 ? serverBerths : liveBrowserBerths;
   const fullJourneyCount = rawBerths.filter(
     (b) => b.status === 'FULL_JOURNEY' || b.coveragePercent === 100
   ).length;
@@ -91,7 +121,6 @@ export function TrainAccordionCard({
   const totalVacantCount = fullJourneyCount > 0 ? fullJourneyCount : partialSegmentCount;
   const hasVacancies = totalVacantCount > 0 && !isDeparted && !isTTEOnly;
   const _isFullJourney = coverageStatus === 'FULL_JOURNEY' || fullJourneyCount > 0;
-  const currentClass = train.travelClass || selectedClass || '3A';
   const trainClasses = train.classes || [];
   const trainOffersSearchedClass = trainClasses.length === 0 || !selectedClass || trainClasses.includes(selectedClass);
 
@@ -423,8 +452,8 @@ export function TrainAccordionCard({
               </div>
             )}
             <VacantBerthsGrid
-              berths={availableBerths}
-              allocatedBerths={allocatedBerths}
+              berths={rawBerths}
+              allocatedBerths={[]}
               fromStation={fromStation || trainOrigin}
               toStation={trainDest || toStation}
               trainNumber={trainNumber}

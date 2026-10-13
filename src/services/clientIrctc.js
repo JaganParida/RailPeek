@@ -145,3 +145,76 @@ export async function fetchBrowserVacantBerths({
     clearTimeout(timeoutId);
   }
 }
+
+/**
+ * Fetch Live Coach Composition (berth layout & split occupancies) directly from IRCTC via client browser
+ * @param {Object} params
+ * @param {string} params.trainNo
+ * @param {string} params.jDate
+ * @param {string} params.boardingStation
+ * @param {string} [params.remoteStation]
+ * @param {string} [params.trainSourceStation]
+ * @param {string} params.coach (e.g. 'B1', 'S2')
+ * @param {string} params.cls (e.g. '3A', 'SL')
+ * @param {number} [params.chartType=1]
+ * @returns {Promise<Array|null>}
+ */
+export async function fetchBrowserCoachComposition({
+  trainNo,
+  jDate,
+  boardingStation,
+  remoteStation,
+  trainSourceStation,
+  coach,
+  cls,
+  chartType = 1,
+}) {
+  if (typeof window === 'undefined') return null;
+  if (!trainNo || !jDate || !boardingStation || !coach || !cls) return null;
+
+  const normCoach = String(coach).trim().toUpperCase();
+  const normClass = String(cls).trim().toUpperCase();
+  const key = `coach:${trainNo}:${jDate}:${boardingStation}:${normCoach}:${normClass}:${chartType}`;
+  if (clientCache.has(key)) {
+    const item = clientCache.get(key);
+    if (Date.now() - item.ts < 2 * 60 * 1000) {
+      return item.data;
+    }
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 6000);
+
+  try {
+    const res = await fetch('https://www.irctc.co.in/online-charts/api/coachComposition', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        trainNo: String(trainNo).trim(),
+        jDate: String(jDate).trim(),
+        boardingStation: String(boardingStation).trim().toUpperCase(),
+        remoteStation: String(remoteStation || boardingStation).trim().toUpperCase(),
+        trainSourceStation: String(trainSourceStation || boardingStation).trim().toUpperCase(),
+        coach: normCoach,
+        cls: normClass,
+        chartType,
+      }),
+      signal: controller.signal,
+    });
+
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data.error || !data.bdd) return null;
+
+    const result = data.bdd || [];
+    clientCache.set(key, { data: result, ts: Date.now() });
+    return result;
+  } catch (_e) {
+    return null;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+

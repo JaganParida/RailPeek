@@ -7,6 +7,7 @@ import {
   AlertCircle,
   ChevronDown,
   Clock,
+  ShieldCheck,
 } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -14,6 +15,8 @@ import { Skeleton } from '@/components/ui/Skeleton';
 import { CoachMap } from '@/components/coach/CoachMap';
 import { TrainBogieStrip } from '@/components/coach/TrainBogieStrip';
 import { BerthDetailSheet } from '@/components/coach/BerthDetailSheet';
+import { fetchBrowserTrainComposition, fetchBrowserCoachComposition } from '@/services/clientIrctc';
+import { buildCoachLayoutFromBdd, getCoachClass } from '@/services/clientCoachLayout';
 
 export function ChartPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -81,18 +84,49 @@ export function ChartPage() {
   const trainQuery = useQuery({
     queryKey: ['trainCoaches', selectedTrain, fromStation, toStation, selectedDate, selectedClass],
     queryFn: async () => {
-      const url = new URL(`/api/v1/coaches/${encodeURIComponent(selectedTrain)}`, window.location.origin);
-      if (fromStation) url.searchParams.set('from', fromStation);
-      if (toStation) url.searchParams.set('to', toStation);
-      if (selectedDate) url.searchParams.set('date', selectedDate);
-      if (selectedClass) url.searchParams.set('travelClass', selectedClass);
+      let serverData = null;
+      try {
+        const url = new URL(`/api/v1/coaches/${encodeURIComponent(selectedTrain)}`, window.location.origin);
+        if (fromStation) url.searchParams.set('from', fromStation);
+        if (toStation) url.searchParams.set('to', toStation);
+        if (selectedDate) url.searchParams.set('date', selectedDate);
+        if (selectedClass) url.searchParams.set('travelClass', selectedClass);
 
-      const res = await fetch(url.toString());
-      if (!res.ok) {
-        throw new Error(`Failed to load train details for ${selectedTrain}`);
+        const res = await fetch(url.toString());
+        if (res.ok) {
+          const json = await res.json();
+          serverData = json.data;
+        }
+      } catch (_e) {
+        // Fallback to client browser query
       }
-      const json = await res.json();
-      return json.data;
+
+      // If backend is on Vercel or has no available coaches, query IRCTC directly via client browser
+      if (!serverData || !serverData.availableCoaches || serverData.availableCoaches.length === 0 || serverData.isDemo) {
+        try {
+          const browserComp = await fetchBrowserTrainComposition(selectedTrain, selectedDate, fromStation);
+          if (browserComp && browserComp.coaches?.length > 0) {
+            const coachesList = browserComp.coaches.map((c) => c.coachName);
+            return {
+              trainNumber: selectedTrain,
+              trainName: browserComp.trainName || serverData?.trainName || `Train ${selectedTrain}`,
+              origin: browserComp.from || fromStation,
+              destination: browserComp.to || toStation,
+              availableCoaches: coachesList,
+              defaultCoach: coachesList[0] || 'B1',
+              chartOneDate: browserComp.chartOneDate,
+              chartTwoDate: browserComp.chartTwoDate,
+              isPrepared: browserComp.isPrepared,
+              source: 'irctc_live_browser',
+            };
+          }
+        } catch (_e) {
+          // ignore
+        }
+      }
+
+      if (serverData) return serverData;
+      throw new Error(`Failed to load train details for ${selectedTrain}`);
     },
     staleTime: 10 * 60 * 1000,
   });
@@ -119,21 +153,61 @@ export function ChartPage() {
   // Query 3: Fetch Coach Vacancy Details
   const activeCoach = selectedCoach || trainData?.defaultCoach || 'S1';
   const coachVacancyQuery = useQuery({
-    queryKey: ['coachVacancy', selectedTrain, activeCoach, selectedDate, fromStation, toStation],
+    queryKey: ['coachVacancy', selectedTrain, activeCoach, selectedDate, fromStation, toStation, selectedClass],
     queryFn: async () => {
-      const url = new URL(`/api/v1/coaches/${encodeURIComponent(selectedTrain)}/${encodeURIComponent(activeCoach)}`, window.location.origin);
-      if (selectedDate) url.searchParams.set('date', selectedDate);
-      if (fromStation) url.searchParams.set('from', fromStation);
-      if (toStation) url.searchParams.set('to', toStation);
-      if (selectedClass) url.searchParams.set('travelClass', selectedClass);
+      let serverData = null;
+      try {
+        const url = new URL(`/api/v1/coaches/${encodeURIComponent(selectedTrain)}/${encodeURIComponent(activeCoach)}`, window.location.origin);
+        if (selectedDate) url.searchParams.set('date', selectedDate);
+        if (fromStation) url.searchParams.set('from', fromStation);
+        if (toStation) url.searchParams.set('to', toStation);
+        if (selectedClass) url.searchParams.set('travelClass', selectedClass);
 
-      const res = await fetch(url.toString());
-      if (!res.ok) {
-        const errJson = await res.json().catch(() => ({}));
-        throw new Error(errJson.error?.message || 'Failed to load coach layout');
+        const res = await fetch(url.toString());
+        if (res.ok) {
+          const json = await res.json();
+          serverData = json.data;
+        }
+      } catch (_e) {
+        // Fallback to client browser query
       }
-      const json = await res.json();
-      return json.data;
+
+      // If server returned live data with available berths, use it
+      if (serverData && serverData.isLiveChart && serverData.summary?.availableTotal > 0) {
+        return serverData;
+      }
+
+      // If server returned 0 berths or isChartPrepared is false or server is offline/blocked by Akamai:
+      // Query IRCTC coach composition directly from passenger's browser!
+      try {
+        const bdd = await fetchBrowserCoachComposition({
+          trainNo: selectedTrain,
+          jDate: selectedDate,
+          boardingStation: fromStation,
+          coach: activeCoach,
+          cls: selectedClass || getCoachClass(activeCoach),
+        });
+
+        if (bdd && bdd.length > 0) {
+          const clientLayout = buildCoachLayoutFromBdd({
+            bddList: bdd,
+            trainNo: selectedTrain,
+            coachName: activeCoach,
+            cls: selectedClass || getCoachClass(activeCoach),
+            journeyDate: selectedDate,
+            fromStation,
+            toStation,
+            trainName: trainData?.trainName || '',
+            availableCoaches: trainData?.availableCoaches || [],
+          });
+          return clientLayout;
+        }
+      } catch (_e) {
+        // ignore
+      }
+
+      if (serverData) return serverData;
+      throw new Error('Failed to load coach layout');
     },
     enabled: Boolean(selectedTrain && activeCoach),
     staleTime: 60 * 1000,
@@ -324,6 +398,19 @@ export function ChartPage() {
                 {coachData.message || `IRCTC reservation chart for Train ${selectedTrain} on ${selectedDate} has not been prepared yet. First chart is officially finalized ~4 hours before train departure.`}
               </p>
             </div>
+          </div>
+        )}
+
+        {/* Live IRCTC Sync Badge */}
+        {coachData && coachData.source === 'irctc_live_browser' && (
+          <div className="flex items-center justify-between px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold shadow-2xs">
+            <span className="flex items-center gap-1.5">
+              <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>Official IRCTC Live Verified</span>
+            </span>
+            <span className="text-[11px] font-mono font-bold text-emerald-700">
+              {coachData.summary?.availableTotal || 0} Vacant Berths in {activeCoach}
+            </span>
           </div>
         )}
 
