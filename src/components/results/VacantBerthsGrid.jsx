@@ -280,6 +280,7 @@ export function VacantBerthsGrid({
     const items = connectedItinerary.items || [];
     const stages = [];
     let currentStep = 1;
+    const userDest = (toStation || '').toUpperCase();
 
     for (let i = 0; i < items.length; i++) {
       const it = items[i];
