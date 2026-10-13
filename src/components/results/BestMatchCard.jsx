@@ -26,6 +26,12 @@ export function BestMatchCard({ option, onInspect, onSelectTrain }) {
   } = option;
 
   const isFullJourney = coverageStatus === 'FULL_JOURNEY';
+  const trainOrigin = option.fromStation || option.origin || option.from || fromStation;
+  const trainDest = option.toStation || option.destination || option.to || toStation;
+  const searchedFrom = option.from || fromStation;
+  const searchedTo = option.to || toStation;
+  const isDifferentOrigin = searchedFrom && trainOrigin && trainOrigin.toUpperCase() !== searchedFrom.toUpperCase();
+  const isDifferentDest = searchedTo && trainDest && trainDest.toUpperCase() !== searchedTo.toUpperCase();
 
   return (
     <Card className="overflow-hidden border-2 border-blue-600 bg-white rounded-xl">
@@ -36,7 +42,7 @@ export function BestMatchCard({ option, onInspect, onSelectTrain }) {
           <span>Recommended Train &bull; Highest Route Coverage</span>
         </div>
         <div className="text-[11px] text-blue-200 hidden sm:block font-normal">
-          {isFullJourney ? '100% Journey Available' : `Available: ${availableFrom || fromStation} ➔ ${availableTo || toStation} (${coveragePercent}%)`}
+          {isFullJourney ? '100% Journey Available' : `Available: ${availableFrom || trainOrigin} ➔ ${availableTo || trainDest} (${coveragePercent}%)`}
         </div>
       </div>
 
@@ -62,11 +68,19 @@ export function BestMatchCard({ option, onInspect, onSelectTrain }) {
                     : 'bg-amber-50 text-amber-800 border-amber-300'
                 }`}
               >
-                {isFullJourney ? 'Full Journey Available' : `Available: ${availableFrom || fromStation} ➔ ${availableTo || toStation} (${coveragePercent}%)`}
+                {isFullJourney ? 'Full Journey Available' : `Available: ${availableFrom || trainOrigin} ➔ ${availableTo || trainDest} (${coveragePercent}%)`}
               </span>
+              {isDifferentOrigin && (
+                <span
+                  className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-300 shrink-0 inline-flex items-center gap-1"
+                  title={`Departs from ${option.fromStationName || trainOrigin} (${trainOrigin}), not ${searchedFrom}`}
+                >
+                  Board at {trainOrigin}
+                </span>
+              )}
             </div>
             <p className="text-xs text-slate-500 mt-1">
-              {fromStation} to {toStation} &bull; {distanceKm ? `${distanceKm} km direct route` : 'Direct Route'}
+              {trainOrigin} to {trainDest} &bull; {distanceKm ? `${distanceKm} km direct route` : 'Direct Route'}
             </p>
           </div>
 
@@ -75,14 +89,34 @@ export function BestMatchCard({ option, onInspect, onSelectTrain }) {
               <div className="text-base font-bold text-slate-900">
                 {departureTime}
               </div>
-              <div className="text-xs text-slate-500 font-medium">{fromStation}</div>
+              <div className="flex items-center justify-end gap-1">
+                <span className="text-xs text-slate-600 font-semibold">{trainOrigin}</span>
+                {isDifferentOrigin && (
+                  <span
+                    className="text-[8px] font-extrabold px-1 py-0.2 rounded bg-amber-100 text-amber-900 border border-amber-300"
+                    title={`Train departs from ${option.fromStationName || trainOrigin}, not ${searchedFrom}`}
+                  >
+                    Nearby
+                  </span>
+                )}
+              </div>
             </div>
             <ArrowRight className="w-4 h-4 text-slate-400 shrink-0" />
             <div>
               <div className="text-base font-bold text-slate-900">
                 {arrivalTime}
               </div>
-              <div className="text-xs text-slate-500 font-medium">{toStation}</div>
+              <div className="flex items-center justify-end gap-1">
+                <span className="text-xs text-slate-600 font-semibold">{trainDest}</span>
+                {isDifferentDest && (
+                  <span
+                    className="text-[8px] font-extrabold px-1 py-0.2 rounded bg-amber-100 text-amber-900 border border-amber-300"
+                    title={`Train terminates at ${option.toStationName || trainDest}, not ${searchedTo}`}
+                  >
+                    Nearby
+                  </span>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -115,7 +149,7 @@ export function BestMatchCard({ option, onInspect, onSelectTrain }) {
               variant="outline"
               size="sm"
               onClick={() => {
-                navigate(`/coach?train=${encodeURIComponent(trainNumber)}&from=${encodeURIComponent(fromStation)}&to=${encodeURIComponent(toStation)}&date=${encodeURIComponent(option.journeyDate || '')}&class=${encodeURIComponent(option.travelClass || '3A')}`);
+                navigate(`/coach?train=${encodeURIComponent(trainNumber)}&from=${encodeURIComponent(trainOrigin)}&to=${encodeURIComponent(trainDest)}&date=${encodeURIComponent(option.journeyDate || '')}&class=${encodeURIComponent(option.travelClass || '3A')}`);
               }}
               className="text-xs font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border-emerald-300"
               leftIcon={Compass}

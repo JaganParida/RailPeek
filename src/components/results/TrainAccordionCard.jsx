@@ -99,10 +99,11 @@ export function TrainAccordionCard({
     .filter((c) => c.travelClass !== currentClass && c.availableBerthsCount > 0)
     .sort((a, b) => b.availableBerthsCount - a.availableBerthsCount);
 
-  // Accurate origin & destination handling (e.g. ANVT vs NDLS)
+  // Accurate origin & destination handling (e.g. NZM/ANVT vs NDLS)
   const trainOrigin = train.fromStation || train.origin || fromStation;
   const trainDest = train.toStation || train.destination || toStation;
-  const _isDifferentTerminal = trainDest && toStation && trainDest !== toStation;
+  const isDifferentOrigin = Boolean(trainOrigin && fromStation && trainOrigin !== fromStation);
+  const isDifferentDest = Boolean(trainDest && toStation && trainDest !== toStation);
 
   const isFinalChartDone = Boolean(
     train.chartTimings?.isSecondChartDone ||
@@ -172,6 +173,14 @@ export function TrainAccordionCard({
             <h3 className="text-sm sm:text-base font-bold text-slate-900 truncate">
               {trainName}
             </h3>
+            {isDifferentOrigin && (
+              <span
+                className="text-[9.5px] font-bold px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-300 shrink-0 inline-flex items-center gap-1"
+                title={`Departs from ${train.fromStationName || trainOrigin} (${trainOrigin}), not ${fromStation}`}
+              >
+                Board at {trainOrigin}
+              </span>
+            )}
           </div>
 
           {/* All 3 Badges Grouped in One Single Line on Mobile */}
@@ -262,8 +271,18 @@ export function TrainAccordionCard({
               <div className="text-base font-extrabold text-slate-900 font-mono leading-tight">
                 {departureTime}
               </div>
-              <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider truncate max-w-[85px]">
-                {fromStation || trainOrigin}
+              <div className="flex items-center gap-1">
+                <span className="text-[10px] font-bold text-slate-700 uppercase tracking-wider truncate max-w-[85px]">
+                  {trainOrigin}
+                </span>
+                {isDifferentOrigin && (
+                  <span
+                    className="text-[8px] font-extrabold px-1 py-0.2 rounded bg-amber-100 text-amber-900 border border-amber-300"
+                    title={`Train departs from ${train.fromStationName || trainOrigin}, not ${fromStation}`}
+                  >
+                    Nearby
+                  </span>
+                )}
               </div>
             </div>
 
@@ -285,8 +304,18 @@ export function TrainAccordionCard({
               <div className="text-base font-extrabold text-slate-900 font-mono leading-tight">
                 {arrivalTime}
               </div>
-              <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider truncate max-w-[85px]">
-                {trainDest}
+              <div className="flex items-center justify-end gap-1">
+                {isDifferentDest && (
+                  <span
+                    className="text-[8px] font-extrabold px-1 py-0.2 rounded bg-amber-100 text-amber-900 border border-amber-300"
+                    title={`Train arrives at ${train.toStationName || trainDest}, not ${toStation}`}
+                  >
+                    Nearby
+                  </span>
+                )}
+                <span className="text-[10px] font-bold text-slate-700 uppercase tracking-wider truncate max-w-[85px]">
+                  {trainDest}
+                </span>
               </div>
             </div>
           </div>

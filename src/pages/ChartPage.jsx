@@ -177,10 +177,20 @@ export function ChartPage() {
               >
                 Back
               </Button>
-              <div className="text-xs sm:text-sm font-bold text-slate-900 truncate flex items-center gap-1.5">
+              <div className="text-xs sm:text-sm font-bold text-slate-900 truncate flex items-center gap-1.5 flex-wrap">
                 <span className="font-mono text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 font-extrabold">{fromStation}</span>
+                {trainData?.origin && fromStation && trainData.origin.toUpperCase() !== fromStation.toUpperCase() && (
+                  <span className="text-[10px] font-bold text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-300" title={`Departs from ${trainData.originName || trainData.origin}`}>
+                    Departs {trainData.origin}
+                  </span>
+                )}
                 <span className="text-slate-400 font-bold">&rarr;</span>
                 <span className="font-mono text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 font-extrabold">{toStation}</span>
+                {trainData?.destination && toStation && trainData.destination.toUpperCase() !== toStation.toUpperCase() && (
+                  <span className="text-[10px] font-bold text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-300" title={`Terminates at ${trainData.destinationName || trainData.destination}`}>
+                    Terminates {trainData.destination}
+                  </span>
+                )}
                 <span className="text-slate-300 hidden sm:inline">&bull;</span>
                 <span className="text-slate-500 text-xs hidden sm:inline font-mono">{selectedDate}</span>
               </div>

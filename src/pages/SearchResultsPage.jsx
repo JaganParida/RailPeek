@@ -584,7 +584,9 @@ export function SearchResultsPage() {
                 const targetCoach = rawBerths?.[0]?.coach || rawBerths?.[0]?.coachId || '';
                 const coachParam = targetCoach ? `&coach=${encodeURIComponent(targetCoach)}` : '';
                 const trainClass = activeViewingTrain.travelClass || selectedClass || '3A';
-                const targetUrl = `/coach?train=${encodeURIComponent(activeViewingTrain.trainNumber)}${coachParam}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&date=${encodeURIComponent(date || '')}&class=${encodeURIComponent(trainClass)}`;
+                const trainFrom = activeViewingTrain.fromStation || activeViewingTrain.origin || from;
+                const trainTo = activeViewingTrain.toStation || activeViewingTrain.destination || to;
+                const targetUrl = `/coach?train=${encodeURIComponent(activeViewingTrain.trainNumber)}${coachParam}&from=${encodeURIComponent(trainFrom)}&to=${encodeURIComponent(trainTo)}&date=${encodeURIComponent(date || '')}&class=${encodeURIComponent(trainClass)}`;
                 navigate(targetUrl);
               }}
               className="px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-[11px] sm:text-xs flex items-center gap-1 transition-all shadow-xs shrink-0 whitespace-nowrap cursor-pointer"
