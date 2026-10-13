@@ -382,20 +382,23 @@ export async function getCoachVacancy({
         // ignore error
       }
 
-      // Map of berthNumber -> matching vacant berth from IRCTC
+      // Map of berthNumber -> array of matching vacant berths from IRCTC (handles multi-split berths)
       const vacantMap = new Map();
       for (const vb of coachVacantBerths) {
         const bNum = Number(vb.berthNumber || vb.berthNo);
         if (bNum) {
-          vacantMap.set(bNum, vb);
+          if (!vacantMap.has(bNum)) {
+            vacantMap.set(bNum, []);
+          }
+          vacantMap.get(bNum).push(vb);
         }
       }
 
-      // Authentic Evaluation: Every berth in coachVacantBerths is VACANT (GREEN), all others are BOOKED (GREY)
+      // Authentic Evaluation: Every berth with IRCTC records is VACANT (GREEN), all others are BOOKED (GREY)
       const evaluatedBerths = baseBerths.map((b) => {
-        const vb = vacantMap.get(b.berthNumber);
+        const vbList = vacantMap.get(b.berthNumber) || [];
 
-        if (!vb) {
+        if (vbList.length === 0) {
           // Berth is Booked / Occupied by other passengers
           return {
             ...b,
@@ -405,48 +408,82 @@ export async function getCoachVacancy({
             availableFrom: undefined,
             availableTo: undefined,
             occupiedSegments: [{ from: fromStation, to: toStation }],
+            availableSegments: [],
             vacantSegments: [],
             suitabilityReason: `Reserved/Occupied by other passengers during travel.`,
           };
         }
 
         // Berth is Confirmed Vacant from IRCTC
-        const vbFrom = (vb.from || '').toUpperCase();
-        const vbTo = (vb.to || '').toUpperCase();
         const userFrom = (fromStation || '').toUpperCase();
         const userTo = (toStation || '').toUpperCase();
 
-        let isFull = true;
-        let coveragePercent = 100;
-        let actualFrom = vbFrom || userFrom;
-        let actualTo = vbTo || userTo;
+        // Evaluate all vacant segments for this berth against user route
+        let bestOverlap = null;
+        let anyFull = false;
 
-        if (userFrom && userTo && userFrom !== userTo && route.length > 0) {
-          const overlap = resolveJourneyOverlap({
-            routeStops: route,
-            fromCode: userFrom,
-            toCode: userTo,
-            vbFrom,
-            vbTo,
-          });
+        const evaluatedSegments = vbList.map((vb) => {
+          const vbFrom = (vb.from || '').toUpperCase();
+          const vbTo = (vb.to || '').toUpperCase();
+          let segOverlap = {
+            overlaps: false,
+            isFull: false,
+            coveragePercent: 0,
+            actualFrom: vbFrom,
+            actualTo: vbTo,
+          };
 
-          if (overlap.overlaps) {
-            isFull = overlap.isFull;
-            coveragePercent = overlap.coveragePercent;
-            actualFrom = overlap.actualFrom;
-            actualTo = overlap.actualTo;
-          } else {
-            isFull = false;
-            coveragePercent = 0;
-            actualFrom = vbFrom;
-            actualTo = vbTo;
+          if (userFrom && userTo && userFrom !== userTo && route.length > 0) {
+            segOverlap = resolveJourneyOverlap({
+              routeStops: route,
+              fromCode: userFrom,
+              toCode: userTo,
+              vbFrom,
+              vbTo,
+            });
           }
+
+          if (segOverlap.isFull) anyFull = true;
+
+          return {
+            from: vbFrom,
+            to: vbTo,
+            splitNo: vb.splitNo,
+            ...segOverlap,
+          };
+        });
+
+        // Pick best matching segment for primary label & track
+        const overlappingSegs = evaluatedSegments.filter((s) => s.overlaps);
+        if (overlappingSegs.length > 0) {
+          overlappingSegs.sort((x, y) => {
+            const xBoarding = x.isBoardingSegment || x.actualFrom === userFrom;
+            const yBoarding = y.isBoardingSegment || y.actualFrom === userFrom;
+            if (xBoarding !== yBoarding) return xBoarding ? -1 : 1;
+            return (y.coveragePercent || 0) - (x.coveragePercent || 0);
+          });
+          bestOverlap = overlappingSegs[0];
+        } else {
+          bestOverlap = evaluatedSegments[0];
         }
+
+        const isFull = anyFull || Boolean(bestOverlap.isFull);
+        const coveragePercent = isFull ? 100 : (bestOverlap.coveragePercent || 0);
+        const actualFrom = bestOverlap.actualFrom || bestOverlap.from;
+        const actualTo = bestOverlap.actualTo || bestOverlap.to;
 
         const bStatus = isFull ? 'FULL_JOURNEY' : 'PARTIAL_JOURNEY';
         const bLabel = isFull
           ? 'Vacant (Available)'
           : `Vacant (${actualFrom} ➔ ${actualTo})`;
+
+        const availableSegs = vbList.map((vb) => ({
+          from: (vb.from || '').toUpperCase(),
+          to: (vb.to || '').toUpperCase(),
+          splitNo: vb.splitNo,
+        }));
+
+        const segDescriptions = availableSegs.map((s) => `${s.from} ➔ ${s.to}`).join(', ');
 
         return {
           ...b,
@@ -456,10 +493,11 @@ export async function getCoachVacancy({
           availableFrom: actualFrom,
           availableTo: actualTo,
           occupiedSegments: [],
-          vacantSegments: [{ from: actualFrom, to: actualTo }],
+          availableSegments: availableSegs,
+          vacantSegments: availableSegs,
           suitabilityReason: isFull
             ? `Fully vacant across your entire travel route from ${fromStation} to ${toStation}.`
-            : `Vacant from ${actualFrom} to ${actualTo} (${coveragePercent}% coverage).`,
+            : `Vacant on: ${segDescriptions}${coveragePercent > 0 ? ` (${coveragePercent}% coverage).` : '.'}`,
         };
       });
 
