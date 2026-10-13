@@ -14,7 +14,7 @@ export const coachRouter = Router();
 /**
  * POST /api/v1/coaches/irctc/trainComposition
  */
-coachRouter.post('/irctc/trainComposition', async (req, res, next) => {
+coachRouter.post('/irctc/trainComposition', trainSearchLimiter, async (req, res, next) => {
   try {
     const { trainNo, jDate, boardingStation } = req.body || {};
     const result = await fetchLiveTrainComposition(trainNo, jDate, boardingStation);
@@ -27,7 +27,7 @@ coachRouter.post('/irctc/trainComposition', async (req, res, next) => {
 /**
  * POST /api/v1/coaches/irctc/vacantBerth
  */
-coachRouter.post('/irctc/vacantBerth', async (req, res, next) => {
+coachRouter.post('/irctc/vacantBerth', trainSearchLimiter, async (req, res, next) => {
   try {
     const result = await fetchLiveVacantBerths(req.body || {});
     return res.json(successResponse(result));
@@ -39,7 +39,7 @@ coachRouter.post('/irctc/vacantBerth', async (req, res, next) => {
 /**
  * POST /api/v1/coaches/irctc/coachComposition
  */
-coachRouter.post('/irctc/coachComposition', async (req, res, next) => {
+coachRouter.post('/irctc/coachComposition', trainSearchLimiter, async (req, res, next) => {
   try {
     const result = await fetchLiveCoachComposition(req.body || {});
     return res.json(successResponse(result));
