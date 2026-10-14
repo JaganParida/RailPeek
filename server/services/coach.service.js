@@ -1,5 +1,5 @@
 import { getRailwayProvider } from '../providers/index.js';
-import { CACHE_POLICY } from '../cache/cachePolicy.js';
+import { getLifecycleCachePolicy } from '../cache/cachePolicy.js';
 import { getCoachVacancyCacheKey } from '../cache/cacheKey.js';
 import { cacheStore } from '../cache/memoryStore.js';
 import { singleFlight } from '../cache/singleFlight.js';
@@ -12,10 +12,8 @@ import {
 } from '../mockData/coaches.mock.js';
 import { MOCK_BERTH_OCCUPANCIES } from '../mockData/availability.mock.js';
 import { ApiError } from '../utils/apiResponse.js';
-import { fetchLiveCoachComposition, fetchLiveTrainComposition, fetchLiveVacantBerths } from './irctcLive.service.js';
+import { fetchLiveTrainComposition, fetchLiveVacantBerths } from './irctcLive.service.js';
 import { getTrainRouteStops, resolveJourneyOverlap, TERMINAL_CLUSTERS } from './routeResolver.service.js';
-import { getCachedAvailability } from './availability.service.js';
-import { env } from '../config/env.js';
 
 /**
  * Generates deterministic realistic occupancies if coach is not explicitly hardcoded.
@@ -246,7 +244,7 @@ export async function getCoachVacancy({
     // Generate coach structure (adapts to 63-berth LHB Sleeper or 72-berth ICF)
     let baseBerths = generateCoachBerths(normCoach, normClass, normTrain);
     let occupancies = null;
-    let isLiveFromIrctc = false;
+    let _isLiveFromIrctc = false;
     let classVacantSummary = null;
 
     if (process.env.NODE_ENV === 'test' || process.env.VITEST) {
@@ -355,7 +353,16 @@ export async function getCoachVacancy({
         fetchedAt: new Date().toISOString(),
       };
 
-      await cacheStore.set(cacheKey, result, CACHE_POLICY.chartVacancy.ttlSeconds);
+      const lifecycle = getLifecycleCachePolicy({
+        journeyDate: date,
+        isPrepared: true,
+        dataType: 'coach',
+      });
+      await cacheStore.set(cacheKey, result, {
+        ttlSeconds: lifecycle.ttlSeconds,
+        staleSeconds: lifecycle.staleSeconds,
+        source: 'demo',
+      });
       return result;
     }
 
@@ -697,7 +704,18 @@ export async function getCoachVacancy({
         fetchedAt: new Date().toISOString(),
       };
 
-      await cacheStore.set(cacheKey, result, CACHE_POLICY.chartVacancy.ttlSeconds);
+      const lifecycle = getLifecycleCachePolicy({
+        journeyDate: date,
+        isPrepared: true,
+        chartOneDate: firstChartTime,
+        chartTwoDate: secondChartTime,
+        dataType: 'coach',
+      });
+      await cacheStore.set(cacheKey, result, {
+        ttlSeconds: lifecycle.ttlSeconds,
+        staleSeconds: lifecycle.staleSeconds,
+        source: 'live',
+      });
       return result;
     });
 

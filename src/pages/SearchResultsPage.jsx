@@ -356,7 +356,7 @@ export function SearchResultsPage() {
       }
     }
     return totals;
-  }, [crossTrains, upcomingTrains]);
+  }, [crossTrains, upcomingTrains, date]);
 
   const routeAvailableInOtherClasses = useMemo(() => {
     return Object.entries(routeClassVacancyTotals)

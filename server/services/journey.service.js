@@ -692,7 +692,6 @@ export async function findUsableBerths(params) {
 
       // 2. ACTIVE / UPCOMING TRAIN: Fetch composition ONCE per train
       let liveComp = null;
-      let isPrepared = false;
       let chartStatus = 'CHART_NOT_PREPARED';
       let chartLabel = 'Chart Opens 4h Before Departure';
       let chartDescription = `IRCTC chart not prepared yet for ${date}. First chart will be finalized 4 hours prior to departure.`;
@@ -720,7 +719,6 @@ export async function findUsableBerths(params) {
         }
 
         if (liveComp && liveComp.success && liveComp.isPrepared) {
-          isPrepared = true;
           chartStatus = 'CHART_PREPARED';
           const isSecondChart = Boolean(liveComp.chartTwoDate);
           chartLabel = isSecondChart ? 'Second Chart Finalized' : 'First Chart Prepared';

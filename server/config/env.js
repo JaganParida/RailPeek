@@ -24,6 +24,7 @@ const envSchema = z.object({
   LIVE_PROVIDER_FALLBACK_TO_DEMO: z
     .preprocess((val) => val === 'true' || val === true, z.boolean())
     .default(false),
+  REDIS_URL: z.string().optional().default(''),
   CLIENT_URL: z.string().default('http://localhost:5173'),
 });
 

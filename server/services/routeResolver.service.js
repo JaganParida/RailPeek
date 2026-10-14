@@ -84,6 +84,7 @@ export async function getTrainRouteStops(trainNumber) {
       routeCache.set(tNo, mock);
       return mock;
     }
+    return [];
   }
 
   // Fetch live route from erail train enquiry

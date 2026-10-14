@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { redisGet, redisSet, redisDel } from './redisStore.js';
 
 /**
  * Serverless-compatible Mongoose Schema for durable snapshot caching across cold lambdas.
@@ -28,24 +29,26 @@ function getCacheSnapshotModel() {
 }
 
 /**
- * High-performance Cache Store supporting in-memory fast lookups,
- * Stale-While-Revalidate metadata, and MongoDB TTL durable persistence.
+ * High-performance Multi-Tier Cache Store:
+ * Tier 1: In-memory LRU Map (0ms latency, local process)
+ * Tier 2: Redis Distributed Cache (sub-millisecond latency, cluster/serverless shared)
+ * Tier 3: MongoDB Atlas TTL Collection (durable persistent fallback)
  */
 export class CacheStore {
-  constructor(maxEntries = 1000) {
+  constructor(maxEntries = 2000) {
     this.maxEntries = maxEntries;
     this.memory = new Map();
   }
 
   /**
-   * Retrieve cached item
+   * Retrieve cached item across Tier 1 (Memory) -> Tier 2 (Redis) -> Tier 3 (MongoDB)
    * @param {string} key
    * @returns {Promise<{ data: any, isStale: boolean, isExpired: boolean, fetchedAt: string, source: string }|null>}
    */
   async get(key) {
     const now = Date.now();
 
-    // 1. Check in-memory Map first (0ms latency)
+    // 1. Tier 1: Check in-memory Map first (0ms latency)
     if (this.memory.has(key)) {
       const entry = this.memory.get(key);
 
@@ -68,20 +71,64 @@ export class CacheStore {
       }
     }
 
-    // 2. Check durable MongoDB snapshot if connected
+    // 2. Tier 2: Check Redis (distributed cluster cache)
+    try {
+      const redisRaw = await redisGet(key);
+      if (redisRaw) {
+        const parsed = JSON.parse(redisRaw);
+        if (parsed && parsed.data !== undefined) {
+          const isStale = now > (parsed.staleAt || parsed.expiresAt);
+          // Warm local in-memory LRU
+          this.setMemoryOnly(key, parsed.data, {
+            fetchedAt: parsed.fetchedAt || now,
+            expiresAt: parsed.expiresAt || now + 60000,
+            staleAt: parsed.staleAt || now + 30000,
+            source: parsed.source || 'redis',
+          });
+
+          return {
+            data: parsed.data,
+            isStale,
+            isExpired: false,
+            fetchedAt: new Date(parsed.fetchedAt || now).toISOString(),
+            source: parsed.source || 'redis',
+          };
+        }
+      }
+    } catch {
+      // Non-blocking fallback to Tier 3
+    }
+
+    // 3. Tier 3: Check durable MongoDB snapshot if connected
     try {
       const Model = getCacheSnapshotModel();
       if (Model) {
         const doc = await Model.findOne({ key, expiresAt: { $gt: new Date() } }).lean();
         if (doc) {
           const isStale = now > new Date(doc.staleAt).getTime();
-          // Warm the memory cache with retrieved durable record
+          // Warm memory and Redis
           this.setMemoryOnly(key, doc.data, {
             fetchedAt: new Date(doc.fetchedAt).getTime(),
             expiresAt: new Date(doc.expiresAt).getTime(),
             staleAt: new Date(doc.staleAt).getTime(),
             source: doc.source,
           });
+
+          const remainingTtlSeconds = Math.max(
+            1,
+            Math.floor((new Date(doc.expiresAt).getTime() - now) / 1000)
+          );
+          redisSet(
+            key,
+            JSON.stringify({
+              data: doc.data,
+              source: doc.source || 'mongodb',
+              fetchedAt: new Date(doc.fetchedAt).getTime(),
+              expiresAt: new Date(doc.expiresAt).getTime(),
+              staleAt: new Date(doc.staleAt).getTime(),
+            }),
+            remainingTtlSeconds
+          ).catch(() => {});
 
           return {
             data: doc.data,
@@ -100,16 +147,16 @@ export class CacheStore {
   }
 
   /**
-   * Put item in cache
+   * Put item in cache across all tiers (Memory + Redis + MongoDB)
    * @param {string} key
    * @param {any} data
-   * @param {Object} options
-   * @param {number} options.ttlSeconds
-   * @param {number} options.staleSeconds
+   * @param {Object|number} options
+   * @param {number} [options.ttlSeconds=60]
+   * @param {number} [options.staleSeconds]
    * @param {string} [options.source="live"]
    */
   async set(key, data, options = {}) {
-    const opts = typeof options === 'number' ? { ttlSeconds: options } : (options || {});
+    const opts = typeof options === 'number' ? { ttlSeconds: options } : options || {};
     const now = Date.now();
     const ttlSeconds = Number(opts.ttlSeconds) || 60;
     const staleSeconds = Number(opts.staleSeconds) || Math.floor(ttlSeconds / 2);
@@ -117,7 +164,7 @@ export class CacheStore {
     const expiresAt = now + ttlSeconds * 1000;
     const staleAt = now + staleSeconds * 1000;
 
-    // 1. Write to in-memory store with LRU eviction guard
+    // 1. Tier 1: Write to in-memory store with LRU eviction guard
     this.setMemoryOnly(key, data, {
       fetchedAt: now,
       expiresAt,
@@ -125,7 +172,17 @@ export class CacheStore {
       source,
     });
 
-    // 2. Asynchronously persist to MongoDB with TTL index if connected
+    // 2. Tier 2: Asynchronously write to Redis (distributed tier)
+    const redisPayload = JSON.stringify({
+      data,
+      source,
+      fetchedAt: now,
+      expiresAt,
+      staleAt,
+    });
+    redisSet(key, redisPayload, ttlSeconds).catch(() => {});
+
+    // 3. Tier 3: Asynchronously persist to MongoDB with TTL index if connected
     try {
       const Model = getCacheSnapshotModel();
       if (Model) {
@@ -174,7 +231,24 @@ export class CacheStore {
   }
 
   /**
-   * Clear cache
+   * Delete entry from all tiers
+   * @param {string} key
+   */
+  async delete(key) {
+    this.memory.delete(key);
+    redisDel(key).catch(() => {});
+    try {
+      const Model = getCacheSnapshotModel();
+      if (Model) {
+        Model.deleteOne({ key }).catch(() => {});
+      }
+    } catch {
+      // Ignore
+    }
+  }
+
+  /**
+   * Clear in-memory cache
    */
   clear() {
     this.memory.clear();

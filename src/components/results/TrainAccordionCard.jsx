@@ -54,9 +54,7 @@ export function TrainAccordionCard({
     return () => {
       isMounted = false;
     };
-  }, [trainNumber, fromStation, chartOneDate, isDeparted, journeyDate]);
-
-  if (!train) return null;
+  }, [trainNumber, fromStation, chartOneDate, isDeparted, journeyDate, train]);
 
   const {
     trainName,
@@ -72,11 +70,11 @@ export function TrainAccordionCard({
     _chartLabel,
     _chartDescription,
     isBestMatch = false,
-  } = train;
+  } = train || {};
 
-  const effectiveChartOneDate = train.chartOneDate || liveBrowserComp?.chartOneDate;
-  const effectiveChartTwoDate = train.chartTwoDate || liveBrowserComp?.chartTwoDate;
-  const effectiveAvlRemote = train.avlRemoteForBooking || liveBrowserComp?.avlRemoteForBooking;
+  const effectiveChartOneDate = train?.chartOneDate || liveBrowserComp?.chartOneDate;
+  const effectiveChartTwoDate = train?.chartTwoDate || liveBrowserComp?.chartTwoDate;
+  const _effectiveAvlRemote = train?.avlRemoteForBooking || liveBrowserComp?.avlRemoteForBooking;
 
   const isChartActuallyPrepared = Boolean(
     operational.isPastFirstChart ||
@@ -86,7 +84,7 @@ export function TrainAccordionCard({
 
   const isTTEOnly = operational.isTTEOnly;
 
-  const currentClass = train.travelClass || selectedClass || '3A';
+  const currentClass = train?.travelClass || selectedClass || '3A';
 
   // Live browser IRCTC vacant berths fetcher when server reports 0 berths
   useEffect(() => {
@@ -94,7 +92,7 @@ export function TrainAccordionCard({
     const initialCount = (availableBerths?.length || 0) + (allocatedBerths?.length || 0);
     const vKey = `${trainNumber}:${currentClass}:${journeyDate || 'today'}`;
 
-    if ((isOpen || isChartActuallyPrepared) && initialCount === 0 && trainNumber && fromStation) {
+    if (train && (isOpen || isChartActuallyPrepared) && initialCount === 0 && trainNumber && fromStation) {
       if (vacantAttemptedRef.current.has(vKey)) return;
       vacantAttemptedRef.current.add(vKey);
 
@@ -118,7 +116,21 @@ export function TrainAccordionCard({
     return () => {
       isMounted = false;
     };
-  }, [isOpen, isChartActuallyPrepared, availableBerths?.length, allocatedBerths?.length, trainNumber, fromStation, toStation, journeyDate, currentClass]);
+  }, [
+    isOpen,
+    isChartActuallyPrepared,
+    availableBerths?.length,
+    allocatedBerths?.length,
+    trainNumber,
+    fromStation,
+    toStation,
+    journeyDate,
+    currentClass,
+    train,
+    liveBrowserComp?.remote,
+  ]);
+
+  if (!train) return null;
 
   const serverBerths = availableBerths?.length > 0 ? availableBerths : allocatedBerths;
   const rawBerths = serverBerths?.length > 0 ? serverBerths : liveBrowserBerths;

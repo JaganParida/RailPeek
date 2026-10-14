@@ -8,16 +8,16 @@
  * 3. Class-wise Vacant Berths across Coaches (vacantBerth)
  *
  * Resilient Architecture:
- * - In-memory TTL cache (prevents duplicate requests to IRCTC)
+ * - Multi-tier Distributed Cache (Memory LRU + Redis Cluster + MongoDB Atlas TTL)
+ * - Lifecycle-Aware TTLs aligned with Indian Railways charting operational timetable
+ * - SingleFlight promise coalescing (prevents thundering herd on concurrent searches)
  * - Safe request headers (matches IRCTC web client)
- * - 4-second timeout with fallback handling
+ * - 6-second timeout with auto-failover
  */
 
 import { singleFlight } from '../cache/singleFlight.js';
-
-const SUCCESS_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
-const FAILURE_CACHE_TTL_MS = 30 * 1000; // 30 seconds for transient errors or unprepared
-const cache = new Map();
+import { cacheStore } from '../cache/memoryStore.js';
+import { getLifecycleCachePolicy } from '../cache/cachePolicy.js';
 
 // Rate limit cooldown tracker (prevents repeated hits if IRCTC returns 429)
 let irctcRateLimitCooldownUntil = 0;
@@ -31,24 +31,13 @@ function triggerRateLimitCooldown(seconds = 30) {
   console.warn(`[IRCTC Live] Upstream rate limit 429 detected. Cooldown active for ${seconds}s.`);
 }
 
-function getCached(key) {
-  const item = cache.get(key);
-  if (item && Date.now() - item.timestamp < (item.ttl || SUCCESS_CACHE_TTL_MS)) {
-    return item.data;
-  }
-  return null;
-}
-
-function setCached(key, data, ttl = SUCCESS_CACHE_TTL_MS) {
-  cache.set(key, { data, timestamp: Date.now(), ttl });
-}
-
 const IRCTC_HEADERS = {
   'Content-Type': 'application/json',
-  'Accept': 'application/json',
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-  'Referer': 'https://www.irctc.co.in/online-charts/',
-  'Origin': 'https://www.irctc.co.in',
+  Accept: 'application/json',
+  'User-Agent':
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  Referer: 'https://www.irctc.co.in/online-charts/',
+  Origin: 'https://www.irctc.co.in',
 };
 
 async function executeIrctcRequest(endpoint, body, signal) {
@@ -73,9 +62,13 @@ async function executeIrctcRequest(endpoint, body, signal) {
         return res;
       }
 
-      console.warn(`[IRCTC Live] Bridge returned HTTP ${res.status} for ${endpoint}. Falling back to direct IRCTC API.`);
+      console.warn(
+        `[IRCTC Live] Bridge returned HTTP ${res.status} for ${endpoint}. Falling back to direct IRCTC API.`
+      );
     } catch (bridgeErr) {
-      console.warn(`[IRCTC Live] Bridge connection failed (${bridgeErr.message}). Falling back to direct IRCTC API.`);
+      console.warn(
+        `[IRCTC Live] Bridge connection failed (${bridgeErr.message}). Falling back to direct IRCTC API.`
+      );
     }
   }
 
@@ -91,7 +84,9 @@ async function executeIrctcRequest(endpoint, body, signal) {
 
 /**
  * Fetch Live Train Composition & Chart Metadata from IRCTC
- * Deduplicated via SingleFlight & protected against 429 rate limits.
+ * Deduplicated via SingleFlight, protected against 429 rate limits,
+ * and persisted in Redis with Lifecycle-Aware TTL.
+ *
  * @param {string} trainNo 5-digit train number (e.g., '12801')
  * @param {string} jDate YYYY-MM-DD
  * @param {string} boardingStation 2-5 letter station code (e.g., 'BBS')
@@ -102,18 +97,26 @@ export async function fetchLiveTrainComposition(trainNo, jDate, boardingStation)
     return { success: false, isPrepared: false, error: 'Test mode' };
   }
 
-  const cacheKey = `comp:${trainNo}:${jDate}:${boardingStation}`;
-  const cached = getCached(cacheKey);
-  if (cached) return cached;
+  const normTrainNo = String(trainNo).trim();
+  const normDate = String(jDate).trim();
+  const normStation = String(boardingStation).trim().toUpperCase();
+  const cacheKey = `comp:${normTrainNo}:${normDate}:${normStation}`;
+
+  // 1. Check multi-tier cache (Memory LRU -> Redis -> MongoDB)
+  const cached = await cacheStore.get(cacheKey);
+  if (cached && cached.data) {
+    return cached.data;
+  }
 
   if (isUnderRateLimitCooldown()) {
     return { success: false, isPrepared: false, error: 'Upstream rate limit cooldown active' };
   }
 
+  // 2. SingleFlight promise deduplication (1,000 concurrent callers share 1 single IRCTC fetch)
   const { data: result } = await singleFlight.do(cacheKey, async () => {
     // Re-check cache inside lock in case another in-flight caller populated it
-    const existing = getCached(cacheKey);
-    if (existing) return existing;
+    const existing = await cacheStore.get(cacheKey);
+    if (existing && existing.data) return existing.data;
 
     const timeoutMs = process.env.IRCTC_BRIDGE_URL ? 10000 : 6000;
     const controller = new AbortController();
@@ -123,9 +126,9 @@ export async function fetchLiveTrainComposition(trainNo, jDate, boardingStation)
       const res = await executeIrctcRequest(
         'trainComposition',
         {
-          trainNo: String(trainNo).trim(),
-          jDate: String(jDate).trim(),
-          boardingStation: String(boardingStation).trim().toUpperCase(),
+          trainNo: normTrainNo,
+          jDate: normDate,
+          boardingStation: normStation,
         },
         controller.signal
       );
@@ -136,8 +139,12 @@ export async function fetchLiveTrainComposition(trainNo, jDate, boardingStation)
         if (res.status === 429) {
           triggerRateLimitCooldown(30);
         }
-        const resObj = { success: false, isPrepared: false, error: `HTTP ${res.status}: ${errText.slice(0, 150)}` };
-        setCached(cacheKey, resObj, FAILURE_CACHE_TTL_MS);
+        const resObj = {
+          success: false,
+          isPrepared: false,
+          error: `HTTP ${res.status}: ${errText.slice(0, 150)}`,
+        };
+        await cacheStore.set(cacheKey, resObj, { ttlSeconds: 30, source: 'irctc-live' });
         return resObj;
       }
 
@@ -148,17 +155,26 @@ export async function fetchLiveTrainComposition(trainNo, jDate, boardingStation)
           isPrepared: false,
           error: data.error || 'Chart not prepared',
         };
-        setCached(cacheKey, resObj, FAILURE_CACHE_TTL_MS);
+        const policy = getLifecycleCachePolicy({
+          journeyDate: normDate,
+          isPrepared: false,
+          dataType: 'composition',
+        });
+        await cacheStore.set(cacheKey, resObj, {
+          ttlSeconds: policy.ttlSeconds,
+          staleSeconds: policy.staleSeconds,
+          source: 'irctc-live',
+        });
         return resObj;
       }
 
       const resObj = {
         success: true,
         isPrepared: Boolean(data.chartOneDate),
-        trainNo: data.trainNo,
-        trainName: data.trainName,
-        from: data.from,
-        to: data.to,
+        trainNo: data.trainNo || normTrainNo,
+        trainName: data.trainName || '',
+        from: data.from || normStation,
+        to: data.to || '',
         trainStartDate: data.trainStartDate,
         chartOneDate: data.chartOneDate,
         chartTwoDate: data.chartTwoDate,
@@ -172,7 +188,20 @@ export async function fetchLiveTrainComposition(trainNo, jDate, boardingStation)
         })),
       };
 
-      setCached(cacheKey, resObj);
+      const policy = getLifecycleCachePolicy({
+        journeyDate: normDate,
+        isPrepared: resObj.isPrepared,
+        chartOneDate: resObj.chartOneDate,
+        chartTwoDate: resObj.chartTwoDate,
+        dataType: 'composition',
+      });
+
+      await cacheStore.set(cacheKey, resObj, {
+        ttlSeconds: policy.ttlSeconds,
+        staleSeconds: policy.staleSeconds,
+        source: 'irctc-live',
+      });
+
       return resObj;
     } catch (err) {
       return { success: false, error: err.message };
@@ -186,13 +215,14 @@ export async function fetchLiveTrainComposition(trainNo, jDate, boardingStation)
 
 /**
  * Fetch Live Coach Layout & Berth Occupancy from IRCTC
- * Deduplicated via SingleFlight & protected against 429 rate limits.
+ * Deduplicated via SingleFlight & protected with Lifecycle Redis cache.
+ *
  * @param {Object} params
  * @param {string} params.trainNo
  * @param {string} params.jDate
  * @param {string} params.boardingStation
- * @param {string} params.remoteStation
- * @param {string} params.trainSourceStation
+ * @param {string} [params.remoteStation]
+ * @param {string} [params.trainSourceStation]
  * @param {string} params.coach (e.g., 'S1')
  * @param {string} params.cls (e.g., 'SL')
  * @returns {Promise<Object>}
@@ -210,17 +240,23 @@ export async function fetchLiveCoachComposition({
     return { success: false, berths: [], error: 'Test mode' };
   }
 
-  const cacheKey = `coach:${trainNo}:${jDate}:${boardingStation}:${coach}:${cls}`;
-  const cached = getCached(cacheKey);
-  if (cached) return cached;
+  const normTrainNo = String(trainNo).trim();
+  const normDate = String(jDate).trim();
+  const normStation = String(boardingStation).trim().toUpperCase();
+  const normCoach = String(coach).trim().toUpperCase();
+  const normCls = String(cls).trim().toUpperCase();
+
+  const cacheKey = `coach:${normTrainNo}:${normDate}:${normStation}:${normCoach}:${normCls}`;
+  const cached = await cacheStore.get(cacheKey);
+  if (cached && cached.data) return cached.data;
 
   if (isUnderRateLimitCooldown()) {
     return { success: false, berths: [], error: 'Upstream rate limit cooldown active' };
   }
 
   const { data: result } = await singleFlight.do(cacheKey, async () => {
-    const existing = getCached(cacheKey);
-    if (existing) return existing;
+    const existing = await cacheStore.get(cacheKey);
+    if (existing && existing.data) return existing.data;
 
     const timeoutMs = process.env.IRCTC_BRIDGE_URL ? 10000 : 5000;
     const controller = new AbortController();
@@ -230,13 +266,13 @@ export async function fetchLiveCoachComposition({
       const res = await executeIrctcRequest(
         'coachComposition',
         {
-          trainNo: String(trainNo).trim(),
-          jDate: String(jDate).trim(),
-          boardingStation: String(boardingStation).trim().toUpperCase(),
-          remoteStation: String(remoteStation || boardingStation).trim().toUpperCase(),
-          trainSourceStation: String(trainSourceStation || boardingStation).trim().toUpperCase(),
-          coach: String(coach).trim().toUpperCase(),
-          cls: String(cls).trim().toUpperCase(),
+          trainNo: normTrainNo,
+          jDate: normDate,
+          boardingStation: normStation,
+          remoteStation: String(remoteStation || normStation).trim().toUpperCase(),
+          trainSourceStation: String(trainSourceStation || normStation).trim().toUpperCase(),
+          coach: normCoach,
+          cls: normCls,
         },
         controller.signal
       );
@@ -250,11 +286,20 @@ export async function fetchLiveCoachComposition({
       if (data.error === 'No Record Found') {
         const resObj = {
           success: true,
-          coachName: data.coachName || coach,
+          coachName: data.coachName || normCoach,
           berths: [],
           isZeroVacancy: true,
         };
-        setCached(cacheKey, resObj);
+        const policy = getLifecycleCachePolicy({
+          journeyDate: normDate,
+          isPrepared: true,
+          dataType: 'coach',
+        });
+        await cacheStore.set(cacheKey, resObj, {
+          ttlSeconds: policy.ttlSeconds,
+          staleSeconds: policy.staleSeconds,
+          source: 'irctc-live',
+        });
         return resObj;
       }
 
@@ -264,11 +309,21 @@ export async function fetchLiveCoachComposition({
 
       const resObj = {
         success: true,
-        coachName: data.coachName || coach,
+        coachName: data.coachName || normCoach,
         berths: data.bdd || [],
       };
 
-      setCached(cacheKey, resObj);
+      const policy = getLifecycleCachePolicy({
+        journeyDate: normDate,
+        isPrepared: true,
+        dataType: 'coach',
+      });
+      await cacheStore.set(cacheKey, resObj, {
+        ttlSeconds: policy.ttlSeconds,
+        staleSeconds: policy.staleSeconds,
+        source: 'irctc-live',
+      });
+
       return resObj;
     } catch (err) {
       return { success: false, error: err.message };
@@ -282,13 +337,14 @@ export async function fetchLiveCoachComposition({
 
 /**
  * Fetch Live Class-wise Vacant Berths from IRCTC
- * Deduplicated via SingleFlight & protected against 429 rate limits.
+ * Deduplicated via SingleFlight & protected with Lifecycle Redis cache.
+ *
  * @param {Object} params
  * @param {string} params.trainNo
  * @param {string} params.jDate
  * @param {string} params.boardingStation
- * @param {string} params.remoteStation
- * @param {string} params.trainSourceStation
+ * @param {string} [params.remoteStation]
+ * @param {string} [params.trainSourceStation]
  * @param {string} params.cls (e.g. 'SL')
  * @param {number} [params.chartType=1]
  * @returns {Promise<Object>}
@@ -302,17 +358,22 @@ export async function fetchLiveVacantBerths({
   cls,
   chartType = 1,
 }) {
-  const cacheKey = `vacant:${trainNo}:${jDate}:${boardingStation}:${cls}:${chartType}`;
-  const cached = getCached(cacheKey);
-  if (cached) return cached;
+  const normTrainNo = String(trainNo).trim();
+  const normDate = String(jDate).trim();
+  const normStation = String(boardingStation).trim().toUpperCase();
+  const normCls = String(cls).trim().toUpperCase();
+
+  const cacheKey = `vacant:${normTrainNo}:${normDate}:${normStation}:${normCls}:${chartType}`;
+  const cached = await cacheStore.get(cacheKey);
+  if (cached && cached.data) return cached.data;
 
   if (isUnderRateLimitCooldown()) {
     return { success: false, error: 'Upstream rate limit cooldown active' };
   }
 
   const { data: result } = await singleFlight.do(cacheKey, async () => {
-    const existing = getCached(cacheKey);
-    if (existing) return existing;
+    const existing = await cacheStore.get(cacheKey);
+    if (existing && existing.data) return existing.data;
 
     const timeoutMs = process.env.IRCTC_BRIDGE_URL ? 10000 : 5000;
     const controller = new AbortController();
@@ -322,12 +383,12 @@ export async function fetchLiveVacantBerths({
       const res = await executeIrctcRequest(
         'vacantBerth',
         {
-          trainNo: String(trainNo).trim(),
-          jDate: String(jDate).trim(),
-          boardingStation: String(boardingStation).trim().toUpperCase(),
-          remoteStation: String(remoteStation || boardingStation).trim().toUpperCase(),
-          trainSourceStation: String(trainSourceStation || boardingStation).trim().toUpperCase(),
-          cls: String(cls).trim().toUpperCase(),
+          trainNo: normTrainNo,
+          jDate: normDate,
+          boardingStation: normStation,
+          remoteStation: String(remoteStation || normStation).trim().toUpperCase(),
+          trainSourceStation: String(trainSourceStation || normStation).trim().toUpperCase(),
+          cls: normCls,
           chartType,
         },
         controller.signal
@@ -336,7 +397,7 @@ export async function fetchLiveVacantBerths({
       if (!res.ok) {
         if (res.status === 429) triggerRateLimitCooldown(30);
         const resObj = { success: false, error: `HTTP ${res.status}` };
-        setCached(cacheKey, resObj, FAILURE_CACHE_TTL_MS);
+        await cacheStore.set(cacheKey, resObj, { ttlSeconds: 30, source: 'irctc-live' });
         return resObj;
       }
 
@@ -347,7 +408,16 @@ export async function fetchLiveVacantBerths({
           vacantBerths: [],
           isZeroVacancy: true,
         };
-        setCached(cacheKey, resObj);
+        const policy = getLifecycleCachePolicy({
+          journeyDate: normDate,
+          isPrepared: true,
+          dataType: 'vacantBerths',
+        });
+        await cacheStore.set(cacheKey, resObj, {
+          ttlSeconds: policy.ttlSeconds,
+          staleSeconds: policy.staleSeconds,
+          source: 'irctc-live',
+        });
         return resObj;
       }
 
@@ -360,7 +430,17 @@ export async function fetchLiveVacantBerths({
         vacantBerths: data.vbd || [],
       };
 
-      setCached(cacheKey, resObj);
+      const policy = getLifecycleCachePolicy({
+        journeyDate: normDate,
+        isPrepared: true,
+        dataType: 'vacantBerths',
+      });
+      await cacheStore.set(cacheKey, resObj, {
+        ttlSeconds: policy.ttlSeconds,
+        staleSeconds: policy.staleSeconds,
+        source: 'irctc-live',
+      });
+
       return resObj;
     } catch (err) {
       return { success: false, error: err.message };
