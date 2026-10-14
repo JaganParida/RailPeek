@@ -39,7 +39,7 @@ export function TrainAccordionCard({
   useEffect(() => {
     let isMounted = true;
     const effectiveBoarding = train?.fromStation || train?.origin || fromStation;
-    if (train && !chartOneDate && !isDeparted && trainNumber && effectiveBoarding) {
+    if (train && !isDeparted && trainNumber && effectiveBoarding) {
       if (compAttemptedRef.current.has(trainNumber)) return;
       compAttemptedRef.current.add(trainNumber);
 
@@ -144,15 +144,49 @@ export function TrainAccordionCard({
     (b) => b.status === 'PARTIAL_JOURNEY' || (b.coveragePercent > 0 && b.coveragePercent < 100)
   ).length;
 
-  const totalVacantCount = rawBerths.length > 0 ? rawBerths.length : (train.totalVacantCount || 0);
+  const compositionVacantForCurrentClass = liveBrowserComp?.coaches
+    ? liveBrowserComp.coaches
+        .filter((c) => c.classCode === currentClass)
+        .reduce((sum, c) => sum + (c.vacantBerths || 0), 0)
+    : 0;
+
+  const totalVacantCount = rawBerths.length > 0
+    ? rawBerths.length
+    : (compositionVacantForCurrentClass > 0 ? compositionVacantForCurrentClass : (train.totalVacantCount || 0));
+
   const hasVacancies = totalVacantCount > 0 && !isDeparted && !isTTEOnly;
   const _isFullJourney = coverageStatus === 'FULL_JOURNEY' || fullJourneyCount > 0;
   const trainClasses = train.classes || [];
   const trainOffersSearchedClass = trainClasses.length === 0 || !selectedClass || trainClasses.includes(selectedClass);
 
-  const availableAltClasses = (train.classSummaries || [])
-    .filter((c) => c.travelClass !== currentClass && c.availableBerthsCount > 0)
-    .sort((a, b) => b.availableBerthsCount - a.availableBerthsCount);
+  const availableAltClasses = (() => {
+    const classCounts = new Map();
+
+    if (liveBrowserComp && Array.isArray(liveBrowserComp.coaches)) {
+      for (const c of liveBrowserComp.coaches) {
+        const cls = c.classCode;
+        if (!cls) continue;
+        classCounts.set(cls, (classCounts.get(cls) || 0) + (c.vacantBerths || 0));
+      }
+    }
+
+    if (Array.isArray(train?.classSummaries)) {
+      for (const cs of train.classSummaries) {
+        if (cs.availableBerthsCount > 0) {
+          classCounts.set(cs.travelClass, Math.max(classCounts.get(cs.travelClass) || 0, cs.availableBerthsCount));
+        }
+      }
+    }
+
+    const list = [];
+    for (const [tClass, count] of classCounts.entries()) {
+      if (tClass !== currentClass && count > 0) {
+        list.push({ travelClass: tClass, availableBerthsCount: count });
+      }
+    }
+
+    return list.sort((a, b) => b.availableBerthsCount - a.availableBerthsCount);
+  })();
 
   // Accurate origin & destination handling (e.g. NZM/ANVT vs NDLS)
   const trainOrigin = train.fromStation || train.origin || fromStation;
