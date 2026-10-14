@@ -51,20 +51,42 @@ const IRCTC_HEADERS = {
   'Origin': 'https://www.irctc.co.in',
 };
 
-function getIrctcTarget(endpoint) {
+async function executeIrctcRequest(endpoint, body, signal) {
   const bridgeUrl = process.env.IRCTC_BRIDGE_URL;
-  if (bridgeUrl) {
-    return `${bridgeUrl.replace(/\/$/, '')}/api/irctc/${endpoint}`;
-  }
-  return `https://www.irctc.co.in/online-charts/api/${endpoint}`;
-}
+  const bridgeToken = process.env.IRCTC_BRIDGE_TOKEN;
 
-function getIrctcHeaders() {
-  const headers = { ...IRCTC_HEADERS };
-  if (process.env.IRCTC_BRIDGE_TOKEN) {
-    headers['x-bridge-token'] = process.env.IRCTC_BRIDGE_TOKEN;
+  // 1. Try Bridge first if configured
+  if (bridgeUrl) {
+    try {
+      const bridgeTarget = `${bridgeUrl.replace(/\/$/, '')}/api/irctc/${endpoint}`;
+      const headers = { ...IRCTC_HEADERS };
+      if (bridgeToken) headers['x-bridge-token'] = bridgeToken;
+
+      const res = await fetch(bridgeTarget, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+        signal,
+      });
+
+      if (res.ok) {
+        return res;
+      }
+
+      console.warn(`[IRCTC Live] Bridge returned HTTP ${res.status} for ${endpoint}. Falling back to direct IRCTC API.`);
+    } catch (bridgeErr) {
+      console.warn(`[IRCTC Live] Bridge connection failed (${bridgeErr.message}). Falling back to direct IRCTC API.`);
+    }
   }
-  return headers;
+
+  // 2. Direct IRCTC API
+  const directTarget = `https://www.irctc.co.in/online-charts/api/${endpoint}`;
+  return await fetch(directTarget, {
+    method: 'POST',
+    headers: IRCTC_HEADERS,
+    body: JSON.stringify(body),
+    signal,
+  });
 }
 
 /**
@@ -93,27 +115,26 @@ export async function fetchLiveTrainComposition(trainNo, jDate, boardingStation)
     const existing = getCached(cacheKey);
     if (existing) return existing;
 
-    const timeoutMs = process.env.IRCTC_BRIDGE_URL ? 10000 : 5000;
+    const timeoutMs = process.env.IRCTC_BRIDGE_URL ? 10000 : 6000;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
-      const res = await fetch(getIrctcTarget('trainComposition'), {
-        method: 'POST',
-        headers: getIrctcHeaders(),
-        body: JSON.stringify({
+      const res = await executeIrctcRequest(
+        'trainComposition',
+        {
           trainNo: String(trainNo).trim(),
           jDate: String(jDate).trim(),
           boardingStation: String(boardingStation).trim().toUpperCase(),
-        }),
-        signal: controller.signal,
-      });
+        },
+        controller.signal
+      );
 
       if (!res.ok) {
         const errText = await res.text().catch(() => '');
         console.error(`[IRCTC Live] HTTP ${res.status} ${res.statusText}: ${errText.slice(0, 200)}`);
-        if (res.status === 429 || res.status === 403) {
-          triggerRateLimitCooldown(60);
+        if (res.status === 429) {
+          triggerRateLimitCooldown(30);
         }
         const resObj = { success: false, isPrepared: false, error: `HTTP ${res.status}: ${errText.slice(0, 150)}` };
         setCached(cacheKey, resObj, FAILURE_CACHE_TTL_MS);
@@ -206,10 +227,9 @@ export async function fetchLiveCoachComposition({
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
-      const res = await fetch(getIrctcTarget('coachComposition'), {
-        method: 'POST',
-        headers: getIrctcHeaders(),
-        body: JSON.stringify({
+      const res = await executeIrctcRequest(
+        'coachComposition',
+        {
           trainNo: String(trainNo).trim(),
           jDate: String(jDate).trim(),
           boardingStation: String(boardingStation).trim().toUpperCase(),
@@ -217,9 +237,9 @@ export async function fetchLiveCoachComposition({
           trainSourceStation: String(trainSourceStation || boardingStation).trim().toUpperCase(),
           coach: String(coach).trim().toUpperCase(),
           cls: String(cls).trim().toUpperCase(),
-        }),
-        signal: controller.signal,
-      });
+        },
+        controller.signal
+      );
 
       if (!res.ok) {
         if (res.status === 429) triggerRateLimitCooldown(30);
@@ -299,10 +319,9 @@ export async function fetchLiveVacantBerths({
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
-      const res = await fetch(getIrctcTarget('vacantBerth'), {
-        method: 'POST',
-        headers: getIrctcHeaders(),
-        body: JSON.stringify({
+      const res = await executeIrctcRequest(
+        'vacantBerth',
+        {
           trainNo: String(trainNo).trim(),
           jDate: String(jDate).trim(),
           boardingStation: String(boardingStation).trim().toUpperCase(),
@@ -310,12 +329,12 @@ export async function fetchLiveVacantBerths({
           trainSourceStation: String(trainSourceStation || boardingStation).trim().toUpperCase(),
           cls: String(cls).trim().toUpperCase(),
           chartType,
-        }),
-        signal: controller.signal,
-      });
+        },
+        controller.signal
+      );
 
       if (!res.ok) {
-        if (res.status === 429 || res.status === 403) triggerRateLimitCooldown(60);
+        if (res.status === 429) triggerRateLimitCooldown(30);
         const resObj = { success: false, error: `HTTP ${res.status}` };
         setCached(cacheKey, resObj, FAILURE_CACHE_TTL_MS);
         return resObj;
