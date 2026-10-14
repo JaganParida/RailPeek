@@ -103,6 +103,8 @@ export function TrainAccordionCard({
         trainNo: trainNumber,
         jDate,
         boardingStation: fromStation,
+        remoteStation: liveBrowserComp?.remote || fromStation,
+        trainSourceStation: train.origin || train.fromStation || fromStation,
         cls: currentClass,
       })
         .then((vbList) => {
