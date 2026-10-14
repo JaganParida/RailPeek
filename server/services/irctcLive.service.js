@@ -43,8 +43,9 @@ const IRCTC_HEADERS = {
 let bridgeDownUntil = 0;
 
 async function executeIrctcRequest(endpoint, body, signal) {
-  const bridgeUrl = process.env.IRCTC_BRIDGE_URL;
-  const bridgeToken = process.env.IRCTC_BRIDGE_TOKEN;
+  const bridgeUrl =
+    process.env.IRCTC_BRIDGE_URL || 'https://gerald-installed-performed-guitars.trycloudflare.com';
+  const bridgeToken = process.env.IRCTC_BRIDGE_TOKEN || 'railpeek-live-bridge';
 
   // 1. Try Bridge first if configured and not in cooldown
   if (bridgeUrl && Date.now() > bridgeDownUntil) {

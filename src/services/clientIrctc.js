@@ -26,6 +26,9 @@
 
 const IRCTC_DIRECT_BASE = 'https://www.irctc.co.in/online-charts/api';
 const SAME_ORIGIN_BASE = '/api/v1/coaches/irctc';
+const LIVE_TUNNEL_BASE =
+  import.meta.env.VITE_IRCTC_BRIDGE_URL ||
+  'https://gerald-installed-performed-guitars.trycloudflare.com/api/irctc';
 const CLOUDFLARE_EDGE_BASE = import.meta.env.VITE_CLOUDFLARE_WORKER_URL
   ? `${import.meta.env.VITE_CLOUDFLARE_WORKER_URL.replace(/\/$/, '')}/api/irctc`
   : '';
@@ -42,7 +45,31 @@ const inFlightPromises = new Map();
  * @returns {Promise<Object|null>}
  */
 async function fetchIrctcDualChannel(endpoint, payload, signal) {
-  // Channel 1: Cloudflare Edge Worker (Zero CORS block, Indian peering) if configured
+  // Channel 1: Live Residential Bridge Tunnel (Zero CORS block, 100% Indian ISP egress)
+  if (LIVE_TUNNEL_BASE) {
+    try {
+      const bridgeRes = await fetch(`${LIVE_TUNNEL_BASE}/${endpoint}?token=railpeek-live-bridge`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-bridge-token': 'railpeek-live-bridge',
+        },
+        body: JSON.stringify(payload),
+        signal,
+      });
+
+      if (bridgeRes.ok) {
+        const data = await bridgeRes.json();
+        if (data && !data.error) {
+          return data;
+        }
+      }
+    } catch (_bridgeErr) {
+      // Fall through to next channel
+    }
+  }
+
+  // Channel 2: Cloudflare Edge Worker (Zero CORS block, Indian peering) if configured
   if (CLOUDFLARE_EDGE_BASE) {
     try {
       const edgeRes = await fetch(`${CLOUDFLARE_EDGE_BASE}/${endpoint}`, {
