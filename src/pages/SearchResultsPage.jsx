@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -26,6 +26,7 @@ import { AlternativeDateBanner } from '@/components/results/AlternativeDateBanne
 import { SuggestedAlternativeBanner } from '@/components/results/SuggestedAlternativeBanner';
 import { BerthInspectDialog } from '@/components/ui/BerthInspectDialog';
 import { getTrainOperationalStatus } from '@/utils/operationalClock';
+import { fetchBrowserTrainComposition } from '@/services/clientIrctc';
 
 export function SearchResultsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -334,6 +335,68 @@ export function SearchResultsPage() {
   const isTabLoading = isClassChanging || isFetching || isLoading;
   const activeDisplayClass = loadingClass || selectedClass;
 
+  // Client-discovered class vacancies from direct IRCTC browser calls
+  const [discoveredClassVacancies, setDiscoveredClassVacancies] = useState({});
+
+  useEffect(() => {
+    setDiscoveredClassVacancies({});
+  }, [from, to, date]);
+
+  const handleDiscoveredClassVacancies = useCallback((trainNo, classMap) => {
+    if (!trainNo || !classMap) return;
+    setDiscoveredClassVacancies((prev) => {
+      const existing = prev[trainNo] || {};
+      let changed = false;
+      for (const [cls, count] of Object.entries(classMap)) {
+        if (existing[cls] !== count) {
+          changed = true;
+          break;
+        }
+      }
+      if (!changed) return prev;
+      return {
+        ...prev,
+        [trainNo]: {
+          ...existing,
+          ...classMap,
+        },
+      };
+    });
+  }, []);
+
+  // Proactive pre-query of IRCTC compositions for upcoming operating route trains
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!upcomingTrains || upcomingTrains.length === 0) return;
+
+    let isMounted = true;
+    const jDate = date || new Date().toISOString().split('T')[0];
+
+    upcomingTrains.slice(0, 10).forEach((t) => {
+      const tNo = t.trainNumber;
+      const bStation = t.fromStation || t.origin || from;
+      if (!tNo || !bStation) return;
+
+      fetchBrowserTrainComposition(tNo, jDate, bStation)
+        .then((comp) => {
+          if (isMounted && comp && comp.success && Array.isArray(comp.coaches)) {
+            const counts = {};
+            for (const c of comp.coaches) {
+              if (c.classCode) {
+                counts[c.classCode] = (counts[c.classCode] || 0) + (c.vacantBerths || 0);
+              }
+            }
+            handleDiscoveredClassVacancies(tNo, counts);
+          }
+        })
+        .catch(() => {});
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [upcomingTrains, date, from, handleDiscoveredClassVacancies]);
+
   // Calculate aggregate vacancies per class across all upcoming operating route trains
   const routeClassVacancyTotals = useMemo(() => {
     const totals = { SL: 0, '3A': 0, '2A': 0, '1A': 0, '2S': 0, CC: 0, '3E': 0 };
@@ -341,22 +404,39 @@ export function SearchResultsPage() {
       const op = getTrainOperationalStatus(date, t.departureTime, t);
       return !op.isDeparted && !op.isTTEOnly;
     });
+
+    const targetClasses = ['SL', '3A', '2A', '1A', '2S', 'CC', '3E'];
+
+    // Map all unique upcoming trains
+    const allUpcoming = new Map();
+    for (const t of upcomingTrains) {
+      if (t.trainNumber) allUpcoming.set(t.trainNumber, t);
+    }
     for (const t of upcomingCrossTrains) {
-      if (Array.isArray(t.classSummaries)) {
-        for (const cs of t.classSummaries) {
-          if (cs.travelClass && typeof cs.availableBerthsCount === 'number') {
-            totals[cs.travelClass] = (totals[cs.travelClass] || 0) + cs.availableBerthsCount;
-          }
+      if (t.trainNumber && !allUpcoming.has(t.trainNumber)) {
+        allUpcoming.set(t.trainNumber, t);
+      }
+    }
+
+    for (const [tNo, t] of allUpcoming.entries()) {
+      const discovered = discoveredClassVacancies[tNo] || {};
+
+      for (const cls of targetClasses) {
+        const clientCount = typeof discovered[cls] === 'number' ? discovered[cls] : 0;
+        const serverSummary = Array.isArray(t.classSummaries)
+          ? (t.classSummaries.find((cs) => cs.travelClass === cls)?.availableBerthsCount || 0)
+          : 0;
+        const currentClassCount = (t.travelClass === cls ? t.totalVacantCount : 0) || 0;
+
+        const bestCount = Math.max(clientCount, serverSummary, currentClassCount);
+        if (bestCount > 0) {
+          totals[cls] = (totals[cls] || 0) + bestCount;
         }
       }
     }
-    for (const ut of upcomingTrains) {
-      if (ut.travelClass && ut.totalVacantCount > 0) {
-        totals[ut.travelClass] = Math.max(totals[ut.travelClass] || 0, ut.totalVacantCount);
-      }
-    }
+
     return totals;
-  }, [crossTrains, upcomingTrains, date]);
+  }, [crossTrains, upcomingTrains, date, discoveredClassVacancies]);
 
   const routeAvailableInOtherClasses = useMemo(() => {
     return Object.entries(routeClassVacancyTotals)
@@ -947,6 +1027,7 @@ export function SearchResultsPage() {
                         toStation={to}
                         selectedClass={selectedClass}
                         onSelectClass={(cls) => handleSelectClass(cls)}
+                        onDiscoveredClassVacancies={handleDiscoveredClassVacancies}
                       />
                     );
                   })}
@@ -1047,6 +1128,7 @@ export function SearchResultsPage() {
                           toStation={to}
                           selectedClass={selectedClass}
                           onSelectClass={(cls) => handleSelectClass(cls)}
+                          onDiscoveredClassVacancies={handleDiscoveredClassVacancies}
                         />
                       );
                     })}

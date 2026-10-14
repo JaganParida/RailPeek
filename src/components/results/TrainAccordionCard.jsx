@@ -16,6 +16,7 @@ export function TrainAccordionCard({
   toStation,
   selectedClass,
   onSelectClass,
+  onDiscoveredClassVacancies,
 }) {
   const [liveBrowserComp, setLiveBrowserComp] = useState(null);
   const [liveBrowserBerths, setLiveBrowserBerths] = useState([]);
@@ -48,6 +49,15 @@ export function TrainAccordionCard({
         .then((comp) => {
           if (isMounted && comp && comp.success) {
             setLiveBrowserComp(comp);
+            if (Array.isArray(comp.coaches) && onDiscoveredClassVacancies) {
+              const counts = {};
+              for (const c of comp.coaches) {
+                if (c.classCode) {
+                  counts[c.classCode] = (counts[c.classCode] || 0) + (c.vacantBerths || 0);
+                }
+              }
+              onDiscoveredClassVacancies(trainNumber, counts);
+            }
           }
         })
         .catch(() => {});
@@ -55,7 +65,20 @@ export function TrainAccordionCard({
     return () => {
       isMounted = false;
     };
-  }, [trainNumber, fromStation, chartOneDate, isDeparted, journeyDate, train]);
+  }, [trainNumber, fromStation, chartOneDate, isDeparted, journeyDate, train, onDiscoveredClassVacancies]);
+
+  // Sync server-provided classSummaries to parent if available
+  useEffect(() => {
+    if (Array.isArray(train?.classSummaries) && train.classSummaries.length > 0 && trainNumber && onDiscoveredClassVacancies) {
+      const counts = {};
+      for (const cs of train.classSummaries) {
+        if (cs.travelClass && typeof cs.availableBerthsCount === 'number') {
+          counts[cs.travelClass] = cs.availableBerthsCount;
+        }
+      }
+      onDiscoveredClassVacancies(trainNumber, counts);
+    }
+  }, [train?.classSummaries, trainNumber, onDiscoveredClassVacancies]);
 
   const {
     trainName,
@@ -111,6 +134,9 @@ export function TrainAccordionCard({
           if (isMounted && Array.isArray(vbList) && vbList.length > 0) {
             const mapped = mapIrctcVacantBerths(vbList, effectiveBoarding, toStation);
             setLiveBrowserBerths(mapped);
+            if (onDiscoveredClassVacancies && mapped.length > 0) {
+              onDiscoveredClassVacancies(trainNumber, { [currentClass]: mapped.length });
+            }
           }
         })
         .catch(() => {});
@@ -130,6 +156,7 @@ export function TrainAccordionCard({
     currentClass,
     train,
     liveBrowserComp?.remote,
+    onDiscoveredClassVacancies,
   ]);
 
   if (!train) return null;
@@ -253,24 +280,28 @@ export function TrainAccordionCard({
       >
         {/* Top Row: Train Identity + Badges Row */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 sm:gap-2 min-w-0">
-          {/* Train Identity: Icon + Number + Name */}
-          <div className="flex items-center gap-2 min-w-0">
-            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-blue-50 border border-blue-200 flex items-center justify-center text-[#1e3a8a] shrink-0">
-              <Train className="w-4 h-4" />
-            </div>
-            <span className="font-mono text-base font-black text-[#1e3a8a] tracking-tight shrink-0">
-              {trainNumber}
-            </span>
-            <h3 className="text-sm sm:text-base font-bold text-slate-900 truncate">
-              {trainName}
-            </h3>
-            {isDifferentOrigin && (
-              <span
-                className="text-[9.5px] font-bold px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-300 shrink-0 inline-flex items-center gap-1"
-                title={`Departs from ${train.fromStationName || trainOrigin} (${trainOrigin}), not ${fromStation}`}
-              >
-                Board at {trainOrigin}
+          {/* Train Identity: Icon + Number + Name (Responsive: Board at badge moves cleanly below on mobile so train name never squeezes) */}
+          <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 min-w-0">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-blue-50 border border-blue-200 flex items-center justify-center text-[#1e3a8a] shrink-0">
+                <Train className="w-4 h-4" />
+              </div>
+              <span className="font-mono text-base font-black text-[#1e3a8a] tracking-tight shrink-0">
+                {trainNumber}
               </span>
+              <h3 className="text-sm sm:text-base font-bold text-slate-900 truncate">
+                {trainName}
+              </h3>
+            </div>
+            {isDifferentOrigin && (
+              <div className="flex items-center pl-9 sm:pl-0 shrink-0">
+                <span
+                  className="text-[9.5px] font-bold px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-300 inline-flex items-center gap-1"
+                  title={`Departs from ${train.fromStationName || trainOrigin} (${trainOrigin}), not ${fromStation}`}
+                >
+                  Board at {trainOrigin}
+                </span>
+              </div>
             )}
           </div>
 
