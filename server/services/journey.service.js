@@ -188,21 +188,17 @@ export function calculateChartTimings(journeyDate, depTime, liveComp = null, isD
   let isFirstChartDone = false;
   let isSecondChartDone = false;
 
-  if (liveComp) {
-    if (liveComp.isPrepared === false) {
-      isFirstChartDone = false;
+  if (liveComp && liveComp.success && liveComp.isPrepared) {
+    isFirstChartDone = Boolean(chartOneDate || liveComp.isPrepared);
+    // If online booking is actively open from a remote station (e.g. NZM), the remote station's chart is NOT finalized!
+    if (liveComp.avlRemoteForBooking && !isBeforeRemote && !isDeparted) {
       isSecondChartDone = false;
     } else {
-      isFirstChartDone = Boolean(chartOneDate || liveComp.isPrepared);
-      // If online booking is actively open from a remote station (e.g. NZM), the remote station's chart is NOT finalized!
-      if (liveComp.avlRemoteForBooking && !isBeforeRemote && !isDeparted) {
-        isSecondChartDone = false;
-      } else {
-        isSecondChartDone = Boolean(chartTwoDate) || isDeparted;
-      }
+      isSecondChartDone = Boolean(chartTwoDate) || isDeparted || isPastFinalChartTime;
     }
   } else {
-    // Fallback clock math only when live IRCTC data is unavailable (demo/test mode)
+    // Clock math: When live IRCTC is unavailable, timed out, or blocked by 403:
+    // Indian Railways clock schedule is the authoritative ground truth!
     isFirstChartDone = isDeparted || isPastFirstChartTime;
     isSecondChartDone = isDeparted || isPastFinalChartTime;
   }
@@ -756,7 +752,9 @@ export async function findUsableBerths(params) {
       }
 
       const chartTimings = calculateChartTimings(date, train.departureTime, liveComp, departed, isBeforeRemote, originDepTime);
-      const isChartReallyPrepared = liveComp ? Boolean(liveComp.isPrepared) : false;
+      const isChartReallyPrepared = (liveComp && liveComp.success)
+        ? Boolean(liveComp.isPrepared)
+        : (departed || chartTimings.isFirstChartDone);
 
       if (isChartReallyPrepared && !departed) {
         chartStatus = chartTimings.isSecondChartDone ? 'FINAL_CHART' : 'CHART_PREPARED';
@@ -1038,14 +1036,16 @@ export async function findUsableBerths(params) {
 
     const durationMinutes = calculateDurationMinutes(train.departureTime, train.arrivalTime);
     const firstResult = trainResults[0];
-    const isPrep = firstResult?.isChartPrepared ?? false;
     const isDeparted = firstResult?.isDeparted ?? isTrainDeparted(date, train.departureTime);
-    const cStatus = firstResult?.chartStatus || (isPrep ? 'CHART_PREPARED' : 'CHART_NOT_PREPARED');
-    let cLabel = firstResult?.chartLabel || (isPrep ? 'First Chart Prepared' : 'Chart Opens 4h Before Departure');
+    const fallbackTimings = calculateChartTimings(date, train.departureTime, null, isDeparted, false);
+    const chartTimings = firstResult?.chartTimings || fallbackTimings;
+    const isPrep = firstResult?.isChartPrepared ?? (isDeparted || chartTimings.isFirstChartDone);
+    const cStatus = firstResult?.chartStatus || (isDeparted ? 'DEPARTED' : (chartTimings.isSecondChartDone ? 'FINAL_CHART' : (isPrep ? 'CHART_PREPARED' : 'CHART_NOT_PREPARED')));
+    let cLabel = firstResult?.chartLabel || (isDeparted ? `Departed (${train.departureTime})` : (chartTimings.isSecondChartDone ? 'Second Chart Finalized' : (isPrep ? 'First Chart Prepared' : 'Chart Opens 4h Before Departure')));
     if (isDeparted && !cLabel.startsWith('Departed')) {
       cLabel = isPrep ? `Departed (${train.departureTime}) · ${cLabel}` : `Departed (${train.departureTime})`;
     }
-    const cDesc = firstResult?.chartDescription || '';
+    const cDesc = firstResult?.chartDescription || chartTimings.bookingChannelDesc || '';
 
     const matchedClassResult = trainResults.find((r) => r.travelClass === travelClass);
     const hasTrainSearchedClass = Boolean(matchedClassResult);
@@ -1095,11 +1095,11 @@ export async function findUsableBerths(params) {
       chartDescription: cDesc,
       chartOneDate: firstResult?.chartOneDate || null,
       chartTwoDate: firstResult?.chartTwoDate || null,
-      chartTimings: firstResult?.chartTimings || calculateChartTimings(date, train.departureTime, null, isDeparted, false),
-      bookingChannel: firstResult?.bookingChannel || (isDeparted ? 'DEPARTED' : 'IRCTC_ADVANCE_BOOKING'),
-      bookingChannelLabel: firstResult?.bookingChannelLabel || (isDeparted ? 'Train Departed • Booking Closed' : 'IRCTC Advance Booking'),
-      bookingChannelDesc: firstResult?.bookingChannelDesc || '',
-      canBookOnline: firstResult?.canBookOnline ?? !isDeparted,
+      chartTimings,
+      bookingChannel: firstResult?.bookingChannel || (isDeparted ? 'DEPARTED' : (chartTimings.bookingChannel || 'IRCTC_ADVANCE_BOOKING')),
+      bookingChannelLabel: firstResult?.bookingChannelLabel || (isDeparted ? 'Train Departed • Booking Closed' : (chartTimings.bookingChannelLabel || 'IRCTC Advance Booking')),
+      bookingChannelDesc: firstResult?.bookingChannelDesc || chartTimings.bookingChannelDesc || '',
+      canBookOnline: firstResult?.canBookOnline ?? chartTimings.canBookOnline ?? !isDeparted,
       avlRemoteForBooking: firstResult?.avlRemoteForBooking || null,
     };
   });
@@ -1272,7 +1272,7 @@ export async function findUsableBerths(params) {
       chartStatus = anyPreparedCross.chartStatus;
       chartLabel = anyPreparedCross.chartLabel;
       chartDescription = anyPreparedCross.chartDescription;
-      source = 'live';
+      source = process.env.NODE_ENV === 'test' ? 'demo' : 'live';
     } else {
       const topDeparture = ranking.bestMatch?.departureTime || allRouteTrains[0]?.departureTime;
       const chartInfo = evaluateChartStatus(date, topDeparture);

@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/Button';
 import { VacantBerthsGrid } from '@/components/results/VacantBerthsGrid';
 import { fetchBrowserTrainComposition, fetchBrowserVacantBerths } from '@/services/clientIrctc';
 import { mapIrctcVacantBerths } from '@/services/clientCoachLayout';
+import { getTrainOperationalStatus } from '@/utils/operationalClock';
 
 export function TrainAccordionCard({
   train,
@@ -23,13 +24,12 @@ export function TrainAccordionCard({
   const vacantAttemptedRef = useRef(new Set());
 
   const trainNumber = train?.trainNumber;
-  const isDeparted = Boolean(
-    train?.isDeparted ||
-    train?.chartStatus === 'DEPARTED' ||
-    (train?.chartLabel && train.chartLabel.toLowerCase().includes('departed'))
-  );
-  const chartOneDate = train?.chartOneDate;
   const journeyDate = train?.journeyDate;
+  const departureTime = train?.departureTime || '--:--';
+  const operational = getTrainOperationalStatus(journeyDate, departureTime, train);
+
+  const isDeparted = operational.isDeparted;
+  const chartOneDate = train?.chartOneDate;
 
   useEffect(() => {
     compAttemptedRef.current.clear();
@@ -60,7 +60,6 @@ export function TrainAccordionCard({
 
   const {
     trainName,
-    departureTime = '--:--',
     arrivalTime = '--:--',
     durationFormatted,
     distanceKm,
@@ -80,17 +79,12 @@ export function TrainAccordionCard({
   const effectiveAvlRemote = train.avlRemoteForBooking || liveBrowserComp?.avlRemoteForBooking;
 
   const isChartActuallyPrepared = Boolean(
+    operational.isPastFirstChart ||
     isChartPrepared ||
-    train.chartTimings?.isFirstChartDone ||
-    train.chartStatus === 'CHART_PREPARED' ||
-    train.chartStatus === 'FINAL_CHART' ||
     effectiveChartOneDate
   );
 
-  const isTTEOnly = Boolean(
-    train.bookingChannel === 'TTE_ONLY' ||
-    (train.chartTimings?.isSecondChartDone && !train.chartTimings?.canBookOnline && !isDeparted)
-  );
+  const isTTEOnly = operational.isTTEOnly;
 
   const currentClass = train.travelClass || selectedClass || '3A';
 
@@ -151,9 +145,9 @@ export function TrainAccordionCard({
   const isDifferentDest = Boolean(trainDest && toStation && trainDest !== toStation);
 
   const isFinalChartDone = Boolean(
-    train.chartTimings?.isSecondChartDone ||
+    operational.isPastFinalChart ||
     isDeparted ||
-    train.chartStatus === 'FINAL_CHART'
+    effectiveChartTwoDate
   );
 
   const formatTimeOnly = (dtStr) => {
@@ -164,17 +158,19 @@ export function TrainAccordionCard({
     return dtStr.slice(0, 5);
   };
 
-  let firstChartText = train.chartTimings?.firstChartDisplay || (
-    effectiveChartOneDate
+  let firstChartText = train.chartTimings?.firstChartDisplay;
+  if (!firstChartText || (isChartActuallyPrepared && firstChartText.startsWith('Scheduled'))) {
+    firstChartText = effectiveChartOneDate
       ? `Prepared at ${formatTimeOnly(effectiveChartOneDate)}`
-      : (isDeparted ? 'Prepared' : 'Scheduled')
-  );
+      : (operational.firstChartTimeFormatted ? `Prepared (~${operational.firstChartTimeFormatted})` : 'Prepared');
+  }
 
-  let finalChartText = train.chartTimings?.finalChartDisplay || (
-    isFinalChartDone && effectiveChartTwoDate
+  let finalChartText = train.chartTimings?.finalChartDisplay;
+  if (!finalChartText || (isFinalChartDone && finalChartText.startsWith('Scheduled'))) {
+    finalChartText = effectiveChartTwoDate
       ? `Finalized at ${formatTimeOnly(effectiveChartTwoDate)}`
-      : (isDeparted ? 'Finalized' : '~30m before dep')
-  );
+      : (operational.finalChartTimeFormatted ? `Finalized (~${operational.finalChartTimeFormatted})` : '~30m before dep');
+  }
 
   // If train has departed, charts must never say "Scheduled"
   if (isDeparted) {
@@ -456,29 +452,25 @@ export function TrainAccordionCard({
 
           <div className="flex items-center gap-1.5 font-bold">
             <span className={`inline-flex items-center gap-1 text-[11px] font-bold ${
-              isDeparted || train.bookingChannel === 'DEPARTED'
+              isDeparted || operational.bookingChannel === 'DEPARTED'
                 ? 'text-slate-600'
-                : isTTEOnly || train.bookingChannel === 'TTE_ONLY'
+                : isTTEOnly || operational.bookingChannel === 'TTE_ONLY'
                 ? 'text-amber-800'
-                : train.bookingChannel === 'IRCTC_ADVANCE_BOOKING'
+                : operational.bookingChannel === 'IRCTC_ADVANCE_BOOKING'
                 ? 'text-blue-800'
                 : 'text-emerald-700'
             }`}>
               <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                isDeparted || train.bookingChannel === 'DEPARTED'
+                isDeparted || operational.bookingChannel === 'DEPARTED'
                   ? 'bg-slate-400'
-                  : isTTEOnly || train.bookingChannel === 'TTE_ONLY'
+                  : isTTEOnly || operational.bookingChannel === 'TTE_ONLY'
                   ? 'bg-amber-500'
-                  : train.bookingChannel === 'IRCTC_ADVANCE_BOOKING'
+                  : operational.bookingChannel === 'IRCTC_ADVANCE_BOOKING'
                   ? 'bg-blue-500'
                   : 'bg-emerald-500'
               }`} />
               <span>
-                {isDeparted || train.bookingChannel === 'DEPARTED'
-                  ? 'Train Departed • Booking Closed'
-                  : isTTEOnly
-                  ? 'TTE On-Board Allocation Only'
-                  : train.bookingChannelLabel || 'Current Booking Open on IRCTC'}
+                {operational.bookingChannelLabel}
               </span>
             </span>
           </div>
