@@ -26,12 +26,15 @@
 
 const IRCTC_DIRECT_BASE = 'https://www.irctc.co.in/online-charts/api';
 const SAME_ORIGIN_BASE = '/api/v1/coaches/irctc';
+const CLOUDFLARE_EDGE_BASE = import.meta.env.VITE_CLOUDFLARE_WORKER_URL
+  ? `${import.meta.env.VITE_CLOUDFLARE_WORKER_URL.replace(/\/$/, '')}/api/irctc`
+  : '';
 
 const clientCache = new Map();
 const inFlightPromises = new Map();
 
 /**
- * Resilient Dual-Channel Executor
+ * Resilient Multi-Tier IRCTC Fetcher
  *
  * @param {string} endpoint - 'trainComposition' | 'vacantBerth' | 'coachComposition'
  * @param {Object} payload - JSON request body
@@ -39,7 +42,52 @@ const inFlightPromises = new Map();
  * @returns {Promise<Object|null>}
  */
 async function fetchIrctcDualChannel(endpoint, payload, signal) {
-  // Channel 1: Direct IRCTC from client browser
+  // Channel 1: Cloudflare Edge Worker (Zero CORS block, Indian peering) if configured
+  if (CLOUDFLARE_EDGE_BASE) {
+    try {
+      const edgeRes = await fetch(`${CLOUDFLARE_EDGE_BASE}/${endpoint}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+        signal,
+      });
+
+      if (edgeRes.ok) {
+        const data = await edgeRes.json();
+        if (data && !data.error) {
+          return data;
+        }
+      }
+    } catch (_edgeErr) {
+      // Fall through to next channel
+    }
+  }
+
+  // Channel 2: Same-origin backend proxy (Vercel -> Bridge / IRCTC)
+  try {
+    const proxyRes = await fetch(`${SAME_ORIGIN_BASE}/${endpoint}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+      signal,
+    });
+
+    if (proxyRes.ok) {
+      const json = await proxyRes.json();
+      const payloadData = json.data || json;
+      if (payloadData && !payloadData.error) {
+        return payloadData;
+      }
+    }
+  } catch (_proxyErr) {
+    // Fall through
+  }
+
+  // Channel 3: Direct IRCTC from client browser
   try {
     const directRes = await fetch(`${IRCTC_DIRECT_BASE}/${endpoint}`, {
       method: 'POST',
@@ -57,26 +105,7 @@ async function fetchIrctcDualChannel(endpoint, payload, signal) {
       }
     }
   } catch (_directErr) {
-    // Silent failover to same-origin proxy
-  }
-
-  // Channel 2: Same-origin backend proxy
-  try {
-    const proxyRes = await fetch(`${SAME_ORIGIN_BASE}/${endpoint}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-      signal,
-    });
-
-    if (proxyRes.ok) {
-      const json = await proxyRes.json();
-      return json.data || json;
-    }
-  } catch (_proxyErr) {
-    // Both channels failed
+    // All channels failed
   }
 
   return null;
