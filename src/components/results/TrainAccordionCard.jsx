@@ -38,12 +38,13 @@ export function TrainAccordionCard({
 
   useEffect(() => {
     let isMounted = true;
-    if (train && !chartOneDate && !isDeparted && trainNumber && fromStation) {
+    const effectiveBoarding = train?.fromStation || train?.origin || fromStation;
+    if (train && !chartOneDate && !isDeparted && trainNumber && effectiveBoarding) {
       if (compAttemptedRef.current.has(trainNumber)) return;
       compAttemptedRef.current.add(trainNumber);
 
       const jDate = journeyDate || new Date().toISOString().split('T')[0];
-      fetchBrowserTrainComposition(trainNumber, jDate, fromStation)
+      fetchBrowserTrainComposition(trainNumber, jDate, effectiveBoarding)
         .then((comp) => {
           if (isMounted && comp && comp.success) {
             setLiveBrowserComp(comp);
@@ -92,7 +93,8 @@ export function TrainAccordionCard({
     const initialCount = (availableBerths?.length || 0) + (allocatedBerths?.length || 0);
     const vKey = `${trainNumber}:${currentClass}:${journeyDate || 'today'}`;
 
-    if (train && (isOpen || isChartActuallyPrepared) && initialCount === 0 && trainNumber && fromStation) {
+    const effectiveBoarding = train?.fromStation || train?.origin || fromStation;
+    if (train && (isOpen || isChartActuallyPrepared) && initialCount === 0 && trainNumber && effectiveBoarding) {
       if (vacantAttemptedRef.current.has(vKey)) return;
       vacantAttemptedRef.current.add(vKey);
 
@@ -100,14 +102,14 @@ export function TrainAccordionCard({
       fetchBrowserVacantBerths({
         trainNo: trainNumber,
         jDate,
-        boardingStation: fromStation,
-        remoteStation: liveBrowserComp?.remote || fromStation,
-        trainSourceStation: train.origin || train.fromStation || fromStation,
+        boardingStation: effectiveBoarding,
+        remoteStation: liveBrowserComp?.remote || effectiveBoarding,
+        trainSourceStation: train.origin || train.fromStation || effectiveBoarding,
         cls: currentClass,
       })
         .then((vbList) => {
           if (isMounted && Array.isArray(vbList) && vbList.length > 0) {
-            const mapped = mapIrctcVacantBerths(vbList, fromStation, toStation);
+            const mapped = mapIrctcVacantBerths(vbList, effectiveBoarding, toStation);
             setLiveBrowserBerths(mapped);
           }
         })

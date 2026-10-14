@@ -104,7 +104,8 @@ export function ChartPage() {
       // If backend is on Vercel or has no available coaches, query IRCTC directly via client browser
       if (!serverData || !serverData.availableCoaches || serverData.availableCoaches.length === 0 || serverData.isDemo) {
         try {
-          const browserComp = await fetchBrowserTrainComposition(selectedTrain, selectedDate, fromStation);
+          const effectiveBoarding = serverData?.fromStation || serverData?.origin || fromStation;
+          const browserComp = await fetchBrowserTrainComposition(selectedTrain, selectedDate, effectiveBoarding);
           if (browserComp && browserComp.coaches?.length > 0) {
             const coachesList = browserComp.coaches.map((c) => c.coachName);
             return {
@@ -180,10 +181,11 @@ export function ChartPage() {
       // If server returned 0 berths or isChartPrepared is false or server is offline/blocked by Akamai:
       // Query IRCTC coach composition directly from passenger's browser!
       try {
+        const effectiveBoarding = trainData?.fromStation || trainData?.origin || serverData?.fromStation || fromStation;
         const bdd = await fetchBrowserCoachComposition({
           trainNo: selectedTrain,
           jDate: selectedDate,
-          boardingStation: fromStation,
+          boardingStation: effectiveBoarding,
           coach: activeCoach,
           cls: selectedClass || getCoachClass(activeCoach),
         });
@@ -195,7 +197,7 @@ export function ChartPage() {
             coachName: activeCoach,
             cls: selectedClass || getCoachClass(activeCoach),
             journeyDate: selectedDate,
-            fromStation,
+            fromStation: effectiveBoarding,
             toStation,
             trainName: trainData?.trainName || '',
             availableCoaches: trainData?.availableCoaches || [],

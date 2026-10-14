@@ -596,6 +596,7 @@ export async function findUsableBerths(params) {
 
   // 2. Query availability with Smart Life-Cycle Bypass & Concurrency Throttling
   const availabilityResults = [];
+  const liveCompMap = new Map();
   const BATCH_SIZE = 3;
 
   for (let bIdx = 0; bIdx < trainsToEvaluate.length; bIdx += BATCH_SIZE) {
@@ -603,9 +604,14 @@ export async function findUsableBerths(params) {
 
     const batchPromises = trainBatch.map(async (train) => {
       const tNum = train.number || train.trainNumber;
-      const classesToQuery = isAllClasses
+      let classesToQuery = isAllClasses
         ? (train.classes || ['3A']).filter((c) => targetClasses.includes(c))
         : [travelClass];
+
+      // If the train does not offer the requested class, also evaluate its primary available classes
+      if (!isAllClasses && Array.isArray(train.classes) && train.classes.length > 0 && !train.classes.includes(travelClass)) {
+        classesToQuery = Array.from(new Set([travelClass, ...train.classes.slice(0, 2)]));
+      }
 
       const durationMinutes = calculateDurationMinutes(
         train.departureTime,
@@ -709,13 +715,18 @@ export async function findUsableBerths(params) {
         // ignore
       }
 
+      const effectiveBoarding = train.fromStation || train.origin || fromCode;
       try {
-        liveComp = await fetchLiveTrainComposition(tNum, date, fromCode);
-        if (!liveComp?.isPrepared && train.origin && train.origin !== fromCode) {
+        liveComp = await fetchLiveTrainComposition(tNum, date, effectiveBoarding);
+        if (!liveComp?.isPrepared && train.origin && train.origin !== effectiveBoarding) {
           const originComp = await fetchLiveTrainComposition(tNum, date, train.origin);
           if (originComp?.isPrepared) {
             liveComp = originComp;
           }
+        }
+
+        if (liveComp && liveComp.success) {
+          liveCompMap.set(tNum, liveComp);
         }
 
         if (liveComp && liveComp.success && liveComp.isPrepared) {
@@ -820,12 +831,12 @@ export async function findUsableBerths(params) {
           liveVacant = await fetchLiveVacantBerths({
             trainNo: tNum,
             jDate: date,
-              boardingStation: fromCode,
-              remoteStation: liveComp?.remote || fromCode,
-              trainSourceStation: liveComp?.from || train.origin || fromCode,
-              cls,
-              chartType: activeChartType,
-            });
+            boardingStation: effectiveBoarding,
+            remoteStation: liveComp?.remote || effectiveBoarding,
+            trainSourceStation: liveComp?.from || train.origin || effectiveBoarding,
+            cls,
+            chartType: activeChartType,
+          });
 
             if (liveVacant && liveVacant.success && Array.isArray(liveVacant.vacantBerths)) {
               liveBerths = liveVacant.vacantBerths
@@ -1020,17 +1031,47 @@ export async function findUsableBerths(params) {
     const tNum = train.number || train.trainNumber;
     const trainResults = availabilityResults.filter((r) => r.trainNumber === tNum);
 
-    const classSummaries = trainResults.map((r) => {
+    const liveComp = liveCompMap.get(tNum);
+    const classSummariesMap = new Map();
+
+    // 1. First populate from live composition coaches if available
+    if (liveComp && Array.isArray(liveComp.coaches)) {
+      for (const c of liveComp.coaches) {
+        const cls = c.classCode;
+        if (!cls) continue;
+        const cur = classSummariesMap.get(cls) || {
+          travelClass: cls,
+          status: 'UNAVAILABLE',
+          availableBerthsCount: 0,
+          fullJourneyCount: 0,
+          coveragePercent: 0,
+        };
+        cur.availableBerthsCount += (c.vacantBerths || 0);
+        if (cur.availableBerthsCount > 0) {
+          cur.status = 'FULL_JOURNEY';
+          cur.fullJourneyCount = cur.availableBerthsCount;
+          cur.coveragePercent = 100;
+        }
+        classSummariesMap.set(cls, cur);
+      }
+    }
+
+    // 2. Overlay with evaluated overlap results from trainResults
+    for (const r of trainResults) {
       const fullCount = r.berths.filter((b) => b.status === 'FULL_JOURNEY').length;
       const partialCount = r.berths.filter((b) => b.status === 'PARTIAL_JOURNEY').length;
-      return {
+      const totalCount = fullCount + partialCount;
+      const prev = classSummariesMap.get(r.travelClass);
+      classSummariesMap.set(r.travelClass, {
         travelClass: r.travelClass,
-        status: fullCount > 0 ? 'FULL_JOURNEY' : partialCount > 0 ? 'PARTIAL_JOURNEY' : 'UNAVAILABLE',
-        availableBerthsCount: fullCount + partialCount,
-        fullJourneyCount: fullCount,
-        coveragePercent: fullCount > 0 ? 100 : partialCount > 0 ? 60 : 0,
-      };
-    });
+        status: fullCount > 0 ? 'FULL_JOURNEY' : partialCount > 0 ? 'PARTIAL_JOURNEY' : (prev?.status || 'UNAVAILABLE'),
+        availableBerthsCount: totalCount > 0 ? totalCount : (prev?.availableBerthsCount || 0),
+        fullJourneyCount: fullCount > 0 ? fullCount : (prev?.fullJourneyCount || 0),
+        coveragePercent: fullCount > 0 ? 100 : partialCount > 0 ? 60 : (prev?.coveragePercent || 0),
+      });
+    }
+
+    const classSummaries = Array.from(classSummariesMap.values());
 
     const durationMinutes = calculateDurationMinutes(train.departureTime, train.arrivalTime);
     const firstResult = trainResults[0];

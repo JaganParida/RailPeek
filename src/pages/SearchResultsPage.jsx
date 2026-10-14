@@ -740,17 +740,16 @@ export function SearchResultsPage() {
                       <span className="text-[11px] sm:text-xs font-black leading-none">{cls}</span>
                       {count > 0 ? (
                         <span
-                          className={`text-[8.5px] sm:text-[10px] px-1 sm:px-1.5 py-0.2 rounded-full font-extrabold leading-none tabular-nums ${
+                          className={`text-[8.5px] sm:text-[10px] px-1 sm:px-1.5 py-0.5 rounded-full font-black leading-none tabular-nums shadow-2xs ${
                             isCurrent
-                              ? 'bg-emerald-400 text-slate-950'
-                              : 'bg-emerald-100 text-emerald-800'
+                              ? 'bg-emerald-400 text-slate-950 font-black'
+                              : 'bg-emerald-600 text-white font-bold'
                           }`}
+                          title={`${count} vacant berths across operating trains`}
                         >
-                          {count}
+                          {count > 999 ? '999+' : count}
                         </span>
-                      ) : (
-                        <span className="sm:hidden text-[8.5px] text-slate-400 font-bold leading-none">–</span>
-                      )}
+                      ) : null}
                     </button>
                   );
                 })}

@@ -40,12 +40,14 @@ const IRCTC_HEADERS = {
   Origin: 'https://www.irctc.co.in',
 };
 
+let bridgeDownUntil = 0;
+
 async function executeIrctcRequest(endpoint, body, signal) {
   const bridgeUrl = process.env.IRCTC_BRIDGE_URL;
   const bridgeToken = process.env.IRCTC_BRIDGE_TOKEN;
 
-  // 1. Try Bridge first if configured
-  if (bridgeUrl) {
+  // 1. Try Bridge first if configured and not in cooldown
+  if (bridgeUrl && Date.now() > bridgeDownUntil) {
     try {
       const bridgeTarget = `${bridgeUrl.replace(/\/$/, '')}/api/irctc/${endpoint}`;
       const headers = { ...IRCTC_HEADERS };
@@ -62,10 +64,12 @@ async function executeIrctcRequest(endpoint, body, signal) {
         return res;
       }
 
+      bridgeDownUntil = Date.now() + 60 * 1000; // 60s cooldown
       console.warn(
         `[IRCTC Live] Bridge returned HTTP ${res.status} for ${endpoint}. Falling back to direct IRCTC API.`
       );
     } catch (bridgeErr) {
+      bridgeDownUntil = Date.now() + 60 * 1000; // 60s cooldown
       console.warn(
         `[IRCTC Live] Bridge connection failed (${bridgeErr.message}). Falling back to direct IRCTC API.`
       );
