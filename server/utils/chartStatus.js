@@ -25,12 +25,44 @@ export function evaluateChartStatus(journeyDate, departureTime = '--:--') {
     };
   }
 
+  // Authoritative Indian Standard Time (UTC+5:30) calculation
   const now = new Date();
-  const todayStr = now.toISOString().slice(0, 10);
+  const istOffsetMs = 5.5 * 60 * 60 * 1000;
+  const istNow = new Date(now.getTime() + (now.getTimezoneOffset() * 60 * 1000) + istOffsetMs);
+
+  const year = istNow.getFullYear();
+  const month = String(istNow.getMonth() + 1).padStart(2, '0');
+  const day = String(istNow.getDate()).padStart(2, '0');
+  const todayStr = `${year}-${month}-${day}`;
+  const nowMinutes = istNow.getHours() * 60 + istNow.getMinutes();
+
   const journeyDateClean = String(journeyDate).trim().slice(0, 10);
 
   // Future dates (tomorrow and beyond)
   if (journeyDateClean > todayStr) {
+    // Check if early morning departure tomorrow (<= 06:00 AM) and current IST time >= 23:30 today
+    // (Indian Railways prepares 00:01-06:00 charts at 23:30 previous night)
+    const tomorrow = new Date(istNow.getTime() + 24 * 60 * 60 * 1000);
+    const tomYear = tomorrow.getFullYear();
+    const tomMonth = String(tomorrow.getMonth() + 1).padStart(2, '0');
+    const tomDay = String(tomorrow.getDate()).padStart(2, '0');
+    const tomorrowStr = `${tomYear}-${tomMonth}-${tomDay}`;
+
+    if (journeyDateClean === tomorrowStr && departureTime && departureTime.includes(':')) {
+      const [h, m] = departureTime.split(':').map(Number);
+      if (!isNaN(h) && !isNaN(m)) {
+        const depMin = h * 60 + m;
+        if (depMin <= 6 * 60 && nowMinutes >= 23 * 60 + 30) {
+          return {
+            chartStatus: 'CHART_PREPARED',
+            chartLabel: 'First Chart Prepared',
+            chartDescription: 'Official Indian Railways First Chart finalized at 23:30 previous night.',
+            isPrepared: true,
+          };
+        }
+      }
+    }
+
     return {
       chartStatus: 'CHART_NOT_PREPARED',
       chartLabel: 'Chart Not Prepared',
@@ -49,17 +81,26 @@ export function evaluateChartStatus(journeyDate, departureTime = '--:--') {
     };
   }
 
-  // TODAY: Evaluate departure time against current time
+  // TODAY: Evaluate departure time against current IST time
   if (departureTime && departureTime !== '--:--' && departureTime.includes(':')) {
     const [depH, depM] = departureTime.split(':').map(Number);
     if (!isNaN(depH) && !isNaN(depM)) {
-      const depDate = new Date();
-      depDate.setHours(depH, depM, 0, 0);
+      const depMinutes = depH * 60 + depM;
 
-      const diffHours = (depDate.getTime() - now.getTime()) / (1000 * 60 * 60);
+      // Early morning departures (00:01-06:00) were already prepared at 23:30 previous night
+      if (depMinutes <= 6 * 60) {
+        return {
+          chartStatus: 'CHART_PREPARED',
+          chartLabel: 'First Chart Prepared',
+          chartDescription: 'Official Indian Railways First Chart finalized at 23:30 previous night.',
+          isPrepared: true,
+        };
+      }
 
-      // Within 4 hours of departure or already departed today
-      if (diffHours <= 4) {
+      const diffMinutes = depMinutes - nowMinutes;
+
+      // Within 4 hours (240 minutes) of departure or already departed today
+      if (diffMinutes <= 240) {
         return {
           chartStatus: 'CHART_PREPARED',
           chartLabel: 'First Chart Prepared',

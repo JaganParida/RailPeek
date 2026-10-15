@@ -166,7 +166,7 @@ export async function fetchBrowserTrainComposition(trainNo, jDate, boardingStati
 
   const promise = (async () => {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 6000);
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
 
     try {
       const data = await fetchIrctcDualChannel(
@@ -268,7 +268,7 @@ export async function fetchBrowserVacantBerths({
 
   const promise = (async () => {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 6000);
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
 
     try {
       const data = await fetchIrctcDualChannel(
@@ -358,7 +358,7 @@ export async function fetchBrowserCoachComposition({
 
   const promise = (async () => {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 6000);
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
 
     try {
       const data = await fetchIrctcDualChannel(

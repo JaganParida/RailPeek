@@ -7,6 +7,7 @@ import { fetchLiveTrainComposition, fetchLiveVacantBerths } from './irctcLive.se
 import { fetchLiveTrainsBetweenStations } from './tbsLive.service.js';
 import { getTrainRouteStops, resolveJourneyOverlap } from './routeResolver.service.js';
 import { resolveJourneySegment } from '../engine/segmentEngine.js';
+import { cacheStore } from '../cache/memoryStore.js';
 import { env } from '../config/env.js';
 
 /**
@@ -717,9 +718,12 @@ export async function findUsableBerths(params) {
 
       const effectiveBoarding = train.fromStation || train.origin || fromCode;
       const initialChartEval = evaluateChartStatus(date, train.departureTime || originDepTime);
+      const isRequestedTrain = Boolean(requestedTrain && (tNum === requestedTrain));
+      const isTopCandidate = Boolean(!requestedTrain && (bIdx === 0));
+      const isCachedInStore = Boolean(await cacheStore.get(`comp:${tNum}:${date}`));
 
       // Smart Credit Optimization: Only query live IRCTC if chart is genuinely eligible to be prepared
-      if (initialChartEval.isPrepared || initialChartEval.chartStatus === 'CHART_PREPARED') {
+      if ((isRequestedTrain || isTopCandidate || isCachedInStore) && (initialChartEval.isPrepared || initialChartEval.chartStatus === 'CHART_PREPARED')) {
         try {
           const depTimeParam = train.departureTime || originDepTime;
           liveComp = await fetchLiveTrainComposition(tNum, date, effectiveBoarding, depTimeParam);
@@ -832,7 +836,7 @@ export async function findUsableBerths(params) {
         let liveBerths = [];
         let liveVacant = null;
 
-        if (liveComp && liveComp.isPrepared) {
+        if ((liveComp && liveComp.isPrepared) || isRequestedTrain) {
           try {
             const routeStops = await getTrainRouteStops(tNum);
             liveVacant = await fetchLiveVacantBerths({

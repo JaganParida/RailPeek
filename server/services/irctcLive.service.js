@@ -59,14 +59,30 @@ async function executeIrctcRequest(endpoint, body, signal) {
   if (scrapeOpsKey) {
     try {
       const res = await enqueueScrapeOps(async () => {
-        const targetUrl = `https://www.irctc.co.in/online-charts/api/${endpoint}`;
-        const proxyUrl = `https://proxy.scrapeops.io/v1/?api_key=${scrapeOpsKey}&url=${encodeURIComponent(targetUrl)}&country=in&residential=true&keep_headers=true`;
-        return await fetch(proxyUrl, {
-          method: 'POST',
-          headers: IRCTC_HEADERS,
-          body: JSON.stringify(body),
-          signal,
-        });
+        const reqController = new AbortController();
+        const reqTimeout = setTimeout(() => reqController.abort(), 20000);
+
+        const onCallerAbort = () => reqController.abort();
+        if (signal) {
+          if (signal.aborted) throw new Error('Caller aborted');
+          signal.addEventListener('abort', onCallerAbort, { once: true });
+        }
+
+        try {
+          const targetUrl = `https://www.irctc.co.in/online-charts/api/${endpoint}`;
+          const proxyUrl = `https://proxy.scrapeops.io/v1/?api_key=${scrapeOpsKey}&url=${encodeURIComponent(targetUrl)}&country=in&residential=true&keep_headers=true`;
+          return await fetch(proxyUrl, {
+            method: 'POST',
+            headers: IRCTC_HEADERS,
+            body: JSON.stringify(body),
+            signal: reqController.signal,
+          });
+        } finally {
+          clearTimeout(reqTimeout);
+          if (signal) {
+            signal.removeEventListener('abort', onCallerAbort);
+          }
+        }
       });
 
       if (res.ok) {
@@ -167,7 +183,7 @@ export async function fetchLiveTrainComposition(trainNo, jDate, boardingStation,
     const existingTrain = await cacheStore.get(trainKey);
     if (existingTrain && existingTrain.data) return existingTrain.data;
 
-    const timeoutMs = process.env.SCRAPEOPS_API_KEY ? 15000 : (process.env.IRCTC_BRIDGE_URL ? 10000 : 6000);
+    const timeoutMs = process.env.SCRAPEOPS_API_KEY ? 25000 : (process.env.IRCTC_BRIDGE_URL ? 10000 : 6000);
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -335,7 +351,7 @@ export async function fetchLiveCoachComposition({
     const existingTrain = await cacheStore.get(trainCoachKey);
     if (existingTrain && existingTrain.data) return existingTrain.data;
 
-    const timeoutMs = process.env.SCRAPEOPS_API_KEY ? 15000 : (process.env.IRCTC_BRIDGE_URL ? 10000 : 5000);
+    const timeoutMs = process.env.SCRAPEOPS_API_KEY ? 25000 : (process.env.IRCTC_BRIDGE_URL ? 10000 : 5000);
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -480,7 +496,7 @@ export async function fetchLiveVacantBerths({
     const existingTrain = await cacheStore.get(trainClsKey);
     if (existingTrain && existingTrain.data) return existingTrain.data;
 
-    const timeoutMs = process.env.SCRAPEOPS_API_KEY ? 15000 : (process.env.IRCTC_BRIDGE_URL ? 10000 : 5000);
+    const timeoutMs = process.env.SCRAPEOPS_API_KEY ? 25000 : (process.env.IRCTC_BRIDGE_URL ? 10000 : 5000);
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
