@@ -18,6 +18,7 @@
 import { singleFlight } from '../cache/singleFlight.js';
 import { cacheStore } from '../cache/memoryStore.js';
 import { getLifecycleCachePolicy } from '../cache/cachePolicy.js';
+import { getRedisClient, isRedisReady } from '../cache/redisStore.js';
 
 // Rate limit cooldown tracker (prevents repeated hits if IRCTC returns 429)
 let irctcRateLimitCooldownUntil = 0;
@@ -43,12 +44,66 @@ const IRCTC_HEADERS = {
 let bridgeDownUntil = 0;
 let scrapeOpsQueue = Promise.resolve();
 
+async function acquireDistributedLock(lockKey, ttlSeconds = 25, maxWaitMs = 25000) {
+  const client = getRedisClient();
+  if (!client || !isRedisReady()) {
+    return null;
+  }
+
+  const token = `${Date.now()}_${Math.random()}`;
+  const startTime = Date.now();
+
+  while (Date.now() - startTime < maxWaitMs) {
+    try {
+      const acquired = await client.set(lockKey, token, 'NX', 'EX', ttlSeconds);
+      if (acquired === 'OK') {
+        return token;
+      }
+    } catch {
+      return null;
+    }
+    await new Promise((r) => setTimeout(r, 300));
+  }
+  return null;
+}
+
+async function releaseDistributedLock(lockKey, token) {
+  if (!token) return;
+  const client = getRedisClient();
+  if (!client || !isRedisReady()) return;
+
+  try {
+    const script = `
+      if redis.call("get", KEYS[1]) == ARGV[1] then
+        return redis.call("del", KEYS[1])
+      else
+        return 0
+      end
+    `;
+    await client.eval(script, 1, lockKey, token);
+  } catch {
+    // Ignore error
+  }
+}
+
 async function enqueueScrapeOps(fn) {
+  // 1. Process-level serial queue (guarantees concurrency = 1 within this node process)
   const next = scrapeOpsQueue.then(async () => {
-    // 250ms spacing guarantees concurrency = 1 (ScrapeOps free plan compliance)
-    await new Promise((r) => setTimeout(r, 250));
-    return fn();
+    // 2. Distributed Redis Mutex (guarantees concurrency = 1 across ALL Vercel lambdas & VM instances)
+    const lockKey = 'lock:scrapeops:concurrency';
+    const lockToken = await acquireDistributedLock(lockKey, 25, 25000);
+
+    try {
+      // 500ms spacing guarantees concurrency = 1 (ScrapeOps free plan compliance)
+      await new Promise((r) => setTimeout(r, 500));
+      return await fn();
+    } finally {
+      if (lockToken) {
+        await releaseDistributedLock(lockKey, lockToken);
+      }
+    }
   });
+
   scrapeOpsQueue = next.catch(() => {});
   return next;
 }
@@ -87,6 +142,9 @@ async function executeIrctcRequest(endpoint, body, signal) {
 
       if (res.ok) {
         return res;
+      }
+      if (res.status === 429) {
+        triggerRateLimitCooldown(30);
       }
       console.warn(`[IRCTC Live] ScrapeOps returned HTTP ${res.status} for ${endpoint}. Falling back to bridge/direct.`);
     } catch (scrapeErr) {

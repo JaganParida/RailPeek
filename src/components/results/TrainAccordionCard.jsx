@@ -40,7 +40,7 @@ export function TrainAccordionCard({
   useEffect(() => {
     let isMounted = true;
     const effectiveBoarding = train?.fromStation || train?.origin || fromStation;
-    if (train && !isDeparted && trainNumber && effectiveBoarding) {
+    if (train && isOpen && !isDeparted && trainNumber && effectiveBoarding) {
       if (compAttemptedRef.current.has(trainNumber)) return;
       compAttemptedRef.current.add(trainNumber);
 
@@ -65,7 +65,7 @@ export function TrainAccordionCard({
     return () => {
       isMounted = false;
     };
-  }, [trainNumber, fromStation, chartOneDate, isDeparted, journeyDate, train, onDiscoveredClassVacancies]);
+  }, [isOpen, trainNumber, fromStation, chartOneDate, isDeparted, journeyDate, train, onDiscoveredClassVacancies]);
 
   // Sync server-provided classSummaries to parent if available
   useEffect(() => {
@@ -117,7 +117,7 @@ export function TrainAccordionCard({
     const vKey = `${trainNumber}:${currentClass}:${journeyDate || 'today'}`;
 
     const effectiveBoarding = train?.fromStation || train?.origin || fromStation;
-    if (train && (isOpen || isChartActuallyPrepared) && initialCount === 0 && trainNumber && effectiveBoarding) {
+    if (train && isOpen && initialCount === 0 && trainNumber && effectiveBoarding) {
       if (vacantAttemptedRef.current.has(vKey)) return;
       vacantAttemptedRef.current.add(vKey);
 
