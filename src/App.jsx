@@ -1,5 +1,7 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
+import { Analytics } from '@vercel/analytics/react';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 import { queryClient } from './lib/queryClient';
 import { ThemeProvider } from './context/ThemeContext';
 import { Header } from './components/layout/Header';
@@ -28,6 +30,8 @@ export function App() {
               </Routes>
             </main>
             <Footer />
+            <Analytics />
+            <SpeedInsights />
           </div>
         </BrowserRouter>
       </QueryClientProvider>
