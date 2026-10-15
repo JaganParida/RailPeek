@@ -167,7 +167,7 @@ export async function fetchLiveTrainComposition(trainNo, jDate, boardingStation,
     const existingTrain = await cacheStore.get(trainKey);
     if (existingTrain && existingTrain.data) return existingTrain.data;
 
-    const timeoutMs = process.env.IRCTC_BRIDGE_URL ? 10000 : 6000;
+    const timeoutMs = process.env.SCRAPEOPS_API_KEY ? 15000 : (process.env.IRCTC_BRIDGE_URL ? 10000 : 6000);
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -335,7 +335,7 @@ export async function fetchLiveCoachComposition({
     const existingTrain = await cacheStore.get(trainCoachKey);
     if (existingTrain && existingTrain.data) return existingTrain.data;
 
-    const timeoutMs = process.env.IRCTC_BRIDGE_URL ? 10000 : 5000;
+    const timeoutMs = process.env.SCRAPEOPS_API_KEY ? 15000 : (process.env.IRCTC_BRIDGE_URL ? 10000 : 5000);
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -480,7 +480,7 @@ export async function fetchLiveVacantBerths({
     const existingTrain = await cacheStore.get(trainClsKey);
     if (existingTrain && existingTrain.data) return existingTrain.data;
 
-    const timeoutMs = process.env.IRCTC_BRIDGE_URL ? 10000 : 5000;
+    const timeoutMs = process.env.SCRAPEOPS_API_KEY ? 15000 : (process.env.IRCTC_BRIDGE_URL ? 10000 : 5000);
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
