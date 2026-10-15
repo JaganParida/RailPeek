@@ -716,18 +716,26 @@ export async function findUsableBerths(params) {
       }
 
       const effectiveBoarding = train.fromStation || train.origin || fromCode;
-      try {
-        liveComp = await fetchLiveTrainComposition(tNum, date, effectiveBoarding);
-        if (!liveComp?.isPrepared && train.origin && train.origin !== effectiveBoarding) {
-          const originComp = await fetchLiveTrainComposition(tNum, date, train.origin);
-          if (originComp?.isPrepared) {
-            liveComp = originComp;
-          }
-        }
+      const initialChartEval = evaluateChartStatus(date, train.departureTime || originDepTime);
 
-        if (liveComp && liveComp.success) {
-          liveCompMap.set(tNum, liveComp);
+      // Smart Credit Optimization: Only query live IRCTC if chart is genuinely eligible to be prepared
+      if (initialChartEval.isPrepared || initialChartEval.chartStatus === 'CHART_PREPARED') {
+        try {
+          liveComp = await fetchLiveTrainComposition(tNum, date, effectiveBoarding);
+          if (!liveComp?.isPrepared && train.origin && train.origin !== effectiveBoarding) {
+            const originComp = await fetchLiveTrainComposition(tNum, date, train.origin);
+            if (originComp?.isPrepared) {
+              liveComp = originComp;
+            }
+          }
+
+          if (liveComp && liveComp.success) {
+            liveCompMap.set(tNum, liveComp);
+          }
+        } catch (_e) {
+          // ignore
         }
+      }
 
         if (liveComp && liveComp.success && liveComp.isPrepared) {
           chartStatus = 'CHART_PREPARED';
@@ -749,9 +757,6 @@ export async function findUsableBerths(params) {
             }
           }
         }
-      } catch (_err) {
-        // graceful fallback
-      }
 
       if (!isBeforeRemote && routeStops.length > 0) {
         const fromIdx = routeStops.findIndex((s) => s.stationCode === fromCode);
@@ -826,17 +831,18 @@ export async function findUsableBerths(params) {
         let liveBerths = [];
         let liveVacant = null;
 
-        try {
-          const routeStops = await getTrainRouteStops(tNum);
-          liveVacant = await fetchLiveVacantBerths({
-            trainNo: tNum,
-            jDate: date,
-            boardingStation: effectiveBoarding,
-            remoteStation: liveComp?.remote || effectiveBoarding,
-            trainSourceStation: liveComp?.from || train.origin || effectiveBoarding,
-            cls,
-            chartType: activeChartType,
-          });
+        if (liveComp && liveComp.isPrepared) {
+          try {
+            const routeStops = await getTrainRouteStops(tNum);
+            liveVacant = await fetchLiveVacantBerths({
+              trainNo: tNum,
+              jDate: date,
+              boardingStation: effectiveBoarding,
+              remoteStation: liveComp?.remote || effectiveBoarding,
+              trainSourceStation: liveComp?.from || train.origin || effectiveBoarding,
+              cls,
+              chartType: activeChartType,
+            });
 
             if (liveVacant && liveVacant.success && Array.isArray(liveVacant.vacantBerths)) {
               liveBerths = liveVacant.vacantBerths
@@ -934,6 +940,7 @@ export async function findUsableBerths(params) {
           } catch (_err) {
             // fallback gracefully
           }
+        }
 
         // Anti-Hallucination & Upstream Parity Policy:
         // Always respect genuine IRCTC data. Never hallucinate fake berths in production.
