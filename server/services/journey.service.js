@@ -721,9 +721,10 @@ export async function findUsableBerths(params) {
       // Smart Credit Optimization: Only query live IRCTC if chart is genuinely eligible to be prepared
       if (initialChartEval.isPrepared || initialChartEval.chartStatus === 'CHART_PREPARED') {
         try {
-          liveComp = await fetchLiveTrainComposition(tNum, date, effectiveBoarding);
+          const depTimeParam = train.departureTime || originDepTime;
+          liveComp = await fetchLiveTrainComposition(tNum, date, effectiveBoarding, depTimeParam);
           if (!liveComp?.isPrepared && train.origin && train.origin !== effectiveBoarding) {
-            const originComp = await fetchLiveTrainComposition(tNum, date, train.origin);
+            const originComp = await fetchLiveTrainComposition(tNum, date, train.origin, depTimeParam);
             if (originComp?.isPrepared) {
               liveComp = originComp;
             }
@@ -842,6 +843,7 @@ export async function findUsableBerths(params) {
               trainSourceStation: liveComp?.from || train.origin || effectiveBoarding,
               cls,
               chartType: activeChartType,
+              departureTime: train.departureTime || originDepTime,
             });
 
             if (liveVacant && liveVacant.success && Array.isArray(liveVacant.vacantBerths)) {
@@ -1283,10 +1285,18 @@ export async function findUsableBerths(params) {
   let liveIrctcData = null;
   const primaryTrainNo = requestedTrain || ranking.bestMatch?.trainNumber || allRouteTrains[0]?.trainNumber || allRouteTrains[0]?.number;
   if (primaryTrainNo) {
-    try {
-      liveIrctcData = await fetchLiveTrainComposition(primaryTrainNo, date, fromCode);
-    } catch (_e) {
-      // Graceful fallback
+    if (liveCompMap.has(primaryTrainNo)) {
+      liveIrctcData = liveCompMap.get(primaryTrainNo);
+    } else {
+      try {
+        const primaryTrainObj = allRouteTrains.find((t) => (t.number || t.trainNumber) === primaryTrainNo);
+        liveIrctcData = await fetchLiveTrainComposition(primaryTrainNo, date, fromCode, primaryTrainObj?.departureTime);
+        if (liveIrctcData && liveIrctcData.success) {
+          liveCompMap.set(primaryTrainNo, liveIrctcData);
+        }
+      } catch (_e) {
+        // Graceful fallback
+      }
     }
   }
 

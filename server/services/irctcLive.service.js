@@ -124,38 +124,48 @@ async function executeIrctcRequest(endpoint, body, signal) {
 /**
  * Fetch Live Train Composition & Chart Metadata from IRCTC
  * Deduplicated via SingleFlight, protected against 429 rate limits,
- * and persisted in Redis with Lifecycle-Aware TTL.
+ * and persisted in Redis with train-wide Lifecycle-Aware TTL.
  *
  * @param {string} trainNo 5-digit train number (e.g., '12801')
  * @param {string} jDate YYYY-MM-DD
- * @param {string} boardingStation 2-5 letter station code (e.g., 'BBS')
+ * @param {string} [boardingStation] 2-5 letter station code (e.g., 'BBS')
+ * @param {string} [departureTime] Scheduled departure time "HH:mm" (IST)
  * @returns {Promise<Object>}
  */
-export async function fetchLiveTrainComposition(trainNo, jDate, boardingStation) {
+export async function fetchLiveTrainComposition(trainNo, jDate, boardingStation, departureTime = null) {
   if (process.env.NODE_ENV === 'test' || process.env.VITEST) {
     return { success: false, isPrepared: false, error: 'Test mode' };
   }
 
   const normTrainNo = String(trainNo).trim();
   const normDate = String(jDate).trim();
-  const normStation = String(boardingStation).trim().toUpperCase();
-  const cacheKey = `comp:${normTrainNo}:${normDate}:${normStation}`;
+  const normStation = String(boardingStation || '').trim().toUpperCase();
+  const trainKey = `comp:${normTrainNo}:${normDate}`;
+  const stationKey = normStation ? `comp:${normTrainNo}:${normDate}:${normStation}` : trainKey;
 
-  // 1. Check multi-tier cache (Memory LRU -> Redis -> MongoDB)
-  const cached = await cacheStore.get(cacheKey);
-  if (cached && cached.data) {
-    return cached.data;
+  // 1. Check train-level shared cache first (covers ALL stations on this train)
+  const cachedTrain = await cacheStore.get(trainKey);
+  if (cachedTrain && cachedTrain.data) {
+    return cachedTrain.data;
+  }
+
+  // 2. Check station-level key if different
+  if (stationKey !== trainKey) {
+    const cachedStation = await cacheStore.get(stationKey);
+    if (cachedStation && cachedStation.data) {
+      return cachedStation.data;
+    }
   }
 
   if (isUnderRateLimitCooldown()) {
     return { success: false, isPrepared: false, error: 'Upstream rate limit cooldown active' };
   }
 
-  // 2. SingleFlight promise deduplication (1,000 concurrent callers share 1 single IRCTC fetch)
-  const { data: result } = await singleFlight.do(cacheKey, async () => {
+  // 3. SingleFlight promise deduplication keyed on trainKey (prevents concurrent hits across all stations)
+  const { data: result } = await singleFlight.do(trainKey, async () => {
     // Re-check cache inside lock in case another in-flight caller populated it
-    const existing = await cacheStore.get(cacheKey);
-    if (existing && existing.data) return existing.data;
+    const existingTrain = await cacheStore.get(trainKey);
+    if (existingTrain && existingTrain.data) return existingTrain.data;
 
     const timeoutMs = process.env.IRCTC_BRIDGE_URL ? 10000 : 6000;
     const controller = new AbortController();
@@ -183,7 +193,10 @@ export async function fetchLiveTrainComposition(trainNo, jDate, boardingStation)
           isPrepared: false,
           error: `HTTP ${res.status}: ${errText.slice(0, 150)}`,
         };
-        await cacheStore.set(cacheKey, resObj, { ttlSeconds: 30, source: 'irctc-live' });
+        await cacheStore.set(trainKey, resObj, { ttlSeconds: 30, source: 'irctc-live' });
+        if (stationKey !== trainKey) {
+          await cacheStore.set(stationKey, resObj, { ttlSeconds: 30, source: 'irctc-live' });
+        }
         return resObj;
       }
 
@@ -196,14 +209,22 @@ export async function fetchLiveTrainComposition(trainNo, jDate, boardingStation)
         };
         const policy = getLifecycleCachePolicy({
           journeyDate: normDate,
+          departureTime,
           isPrepared: false,
           dataType: 'composition',
         });
-        await cacheStore.set(cacheKey, resObj, {
+        await cacheStore.set(trainKey, resObj, {
           ttlSeconds: policy.ttlSeconds,
           staleSeconds: policy.staleSeconds,
           source: 'irctc-live',
         });
+        if (stationKey !== trainKey) {
+          await cacheStore.set(stationKey, resObj, {
+            ttlSeconds: policy.ttlSeconds,
+            staleSeconds: policy.staleSeconds,
+            source: 'irctc-live',
+          });
+        }
         return resObj;
       }
 
@@ -229,17 +250,25 @@ export async function fetchLiveTrainComposition(trainNo, jDate, boardingStation)
 
       const policy = getLifecycleCachePolicy({
         journeyDate: normDate,
+        departureTime,
         isPrepared: resObj.isPrepared,
         chartOneDate: resObj.chartOneDate,
         chartTwoDate: resObj.chartTwoDate,
         dataType: 'composition',
       });
 
-      await cacheStore.set(cacheKey, resObj, {
+      await cacheStore.set(trainKey, resObj, {
         ttlSeconds: policy.ttlSeconds,
         staleSeconds: policy.staleSeconds,
         source: 'irctc-live',
       });
+      if (stationKey !== trainKey) {
+        await cacheStore.set(stationKey, resObj, {
+          ttlSeconds: policy.ttlSeconds,
+          staleSeconds: policy.staleSeconds,
+          source: 'irctc-live',
+        });
+      }
 
       return resObj;
     } catch (err) {
@@ -259,11 +288,12 @@ export async function fetchLiveTrainComposition(trainNo, jDate, boardingStation)
  * @param {Object} params
  * @param {string} params.trainNo
  * @param {string} params.jDate
- * @param {string} params.boardingStation
+ * @param {string} [params.boardingStation]
  * @param {string} [params.remoteStation]
  * @param {string} [params.trainSourceStation]
  * @param {string} params.coach (e.g., 'S1')
  * @param {string} params.cls (e.g., 'SL')
+ * @param {string} [params.departureTime]
  * @returns {Promise<Object>}
  */
 export async function fetchLiveCoachComposition({
@@ -274,6 +304,7 @@ export async function fetchLiveCoachComposition({
   trainSourceStation,
   coach,
   cls,
+  departureTime = null,
 }) {
   if (process.env.NODE_ENV === 'test' || process.env.VITEST) {
     return { success: false, berths: [], error: 'Test mode' };
@@ -281,21 +312,28 @@ export async function fetchLiveCoachComposition({
 
   const normTrainNo = String(trainNo).trim();
   const normDate = String(jDate).trim();
-  const normStation = String(boardingStation).trim().toUpperCase();
+  const normStation = String(boardingStation || '').trim().toUpperCase();
   const normCoach = String(coach).trim().toUpperCase();
   const normCls = String(cls).trim().toUpperCase();
 
-  const cacheKey = `coach:${normTrainNo}:${normDate}:${normStation}:${normCoach}:${normCls}`;
-  const cached = await cacheStore.get(cacheKey);
-  if (cached && cached.data) return cached.data;
+  const trainCoachKey = `coach:${normTrainNo}:${normDate}:${normCoach}:${normCls}`;
+  const stationCoachKey = normStation ? `coach:${normTrainNo}:${normDate}:${normStation}:${normCoach}:${normCls}` : trainCoachKey;
+
+  const cachedTrain = await cacheStore.get(trainCoachKey);
+  if (cachedTrain && cachedTrain.data) return cachedTrain.data;
+
+  if (stationCoachKey !== trainCoachKey) {
+    const cachedStation = await cacheStore.get(stationCoachKey);
+    if (cachedStation && cachedStation.data) return cachedStation.data;
+  }
 
   if (isUnderRateLimitCooldown()) {
     return { success: false, berths: [], error: 'Upstream rate limit cooldown active' };
   }
 
-  const { data: result } = await singleFlight.do(cacheKey, async () => {
-    const existing = await cacheStore.get(cacheKey);
-    if (existing && existing.data) return existing.data;
+  const { data: result } = await singleFlight.do(trainCoachKey, async () => {
+    const existingTrain = await cacheStore.get(trainCoachKey);
+    if (existingTrain && existingTrain.data) return existingTrain.data;
 
     const timeoutMs = process.env.IRCTC_BRIDGE_URL ? 10000 : 5000;
     const controller = new AbortController();
@@ -331,14 +369,22 @@ export async function fetchLiveCoachComposition({
         };
         const policy = getLifecycleCachePolicy({
           journeyDate: normDate,
+          departureTime,
           isPrepared: true,
           dataType: 'coach',
         });
-        await cacheStore.set(cacheKey, resObj, {
+        await cacheStore.set(trainCoachKey, resObj, {
           ttlSeconds: policy.ttlSeconds,
           staleSeconds: policy.staleSeconds,
           source: 'irctc-live',
         });
+        if (stationCoachKey !== trainCoachKey) {
+          await cacheStore.set(stationCoachKey, resObj, {
+            ttlSeconds: policy.ttlSeconds,
+            staleSeconds: policy.staleSeconds,
+            source: 'irctc-live',
+          });
+        }
         return resObj;
       }
 
@@ -354,14 +400,22 @@ export async function fetchLiveCoachComposition({
 
       const policy = getLifecycleCachePolicy({
         journeyDate: normDate,
+        departureTime,
         isPrepared: true,
         dataType: 'coach',
       });
-      await cacheStore.set(cacheKey, resObj, {
+      await cacheStore.set(trainCoachKey, resObj, {
         ttlSeconds: policy.ttlSeconds,
         staleSeconds: policy.staleSeconds,
         source: 'irctc-live',
       });
+      if (stationCoachKey !== trainCoachKey) {
+        await cacheStore.set(stationCoachKey, resObj, {
+          ttlSeconds: policy.ttlSeconds,
+          staleSeconds: policy.staleSeconds,
+          source: 'irctc-live',
+        });
+      }
 
       return resObj;
     } catch (err) {
@@ -381,11 +435,12 @@ export async function fetchLiveCoachComposition({
  * @param {Object} params
  * @param {string} params.trainNo
  * @param {string} params.jDate
- * @param {string} params.boardingStation
+ * @param {string} [params.boardingStation]
  * @param {string} [params.remoteStation]
  * @param {string} [params.trainSourceStation]
  * @param {string} params.cls (e.g. 'SL')
  * @param {number} [params.chartType=1]
+ * @param {string} [params.departureTime]
  * @returns {Promise<Object>}
  */
 export async function fetchLiveVacantBerths({
@@ -396,23 +451,34 @@ export async function fetchLiveVacantBerths({
   trainSourceStation,
   cls,
   chartType = 1,
+  departureTime = null,
 }) {
   const normTrainNo = String(trainNo).trim();
   const normDate = String(jDate).trim();
-  const normStation = String(boardingStation).trim().toUpperCase();
+  const normStation = String(boardingStation || '').trim().toUpperCase();
   const normCls = String(cls).trim().toUpperCase();
 
-  const cacheKey = `vacant:${normTrainNo}:${normDate}:${normStation}:${normCls}:${chartType}`;
-  const cached = await cacheStore.get(cacheKey);
-  if (cached && cached.data) return cached.data;
+  const trainClsKey = `vacant:${normTrainNo}:${normDate}:${normCls}:${chartType}`;
+  const stationClsKey = normStation ? `vacant:${normTrainNo}:${normDate}:${normStation}:${normCls}:${chartType}` : trainClsKey;
+
+  // 1. Check train-level shared cache first (covers entire route)
+  const cachedTrain = await cacheStore.get(trainClsKey);
+  if (cachedTrain && cachedTrain.data) return cachedTrain.data;
+
+  // 2. Check station-level cache if different
+  if (stationClsKey !== trainClsKey) {
+    const cachedStation = await cacheStore.get(stationClsKey);
+    if (cachedStation && cachedStation.data) return cachedStation.data;
+  }
 
   if (isUnderRateLimitCooldown()) {
     return { success: false, error: 'Upstream rate limit cooldown active' };
   }
 
-  const { data: result } = await singleFlight.do(cacheKey, async () => {
-    const existing = await cacheStore.get(cacheKey);
-    if (existing && existing.data) return existing.data;
+  // 3. SingleFlight deduplication keyed on trainClsKey
+  const { data: result } = await singleFlight.do(trainClsKey, async () => {
+    const existingTrain = await cacheStore.get(trainClsKey);
+    if (existingTrain && existingTrain.data) return existingTrain.data;
 
     const timeoutMs = process.env.IRCTC_BRIDGE_URL ? 10000 : 5000;
     const controller = new AbortController();
@@ -436,7 +502,10 @@ export async function fetchLiveVacantBerths({
       if (!res.ok) {
         if (res.status === 429) triggerRateLimitCooldown(30);
         const resObj = { success: false, error: `HTTP ${res.status}` };
-        await cacheStore.set(cacheKey, resObj, { ttlSeconds: 30, source: 'irctc-live' });
+        await cacheStore.set(trainClsKey, resObj, { ttlSeconds: 30, source: 'irctc-live' });
+        if (stationClsKey !== trainClsKey) {
+          await cacheStore.set(stationClsKey, resObj, { ttlSeconds: 30, source: 'irctc-live' });
+        }
         return resObj;
       }
 
@@ -449,14 +518,22 @@ export async function fetchLiveVacantBerths({
         };
         const policy = getLifecycleCachePolicy({
           journeyDate: normDate,
+          departureTime,
           isPrepared: true,
           dataType: 'vacantBerths',
         });
-        await cacheStore.set(cacheKey, resObj, {
+        await cacheStore.set(trainClsKey, resObj, {
           ttlSeconds: policy.ttlSeconds,
           staleSeconds: policy.staleSeconds,
           source: 'irctc-live',
         });
+        if (stationClsKey !== trainClsKey) {
+          await cacheStore.set(stationClsKey, resObj, {
+            ttlSeconds: policy.ttlSeconds,
+            staleSeconds: policy.staleSeconds,
+            source: 'irctc-live',
+          });
+        }
         return resObj;
       }
 
@@ -471,14 +548,22 @@ export async function fetchLiveVacantBerths({
 
       const policy = getLifecycleCachePolicy({
         journeyDate: normDate,
+        departureTime,
         isPrepared: true,
         dataType: 'vacantBerths',
       });
-      await cacheStore.set(cacheKey, resObj, {
+      await cacheStore.set(trainClsKey, resObj, {
         ttlSeconds: policy.ttlSeconds,
         staleSeconds: policy.staleSeconds,
         source: 'irctc-live',
       });
+      if (stationClsKey !== trainClsKey) {
+        await cacheStore.set(stationClsKey, resObj, {
+          ttlSeconds: policy.ttlSeconds,
+          staleSeconds: policy.staleSeconds,
+          source: 'irctc-live',
+        });
+      }
 
       return resObj;
     } catch (err) {

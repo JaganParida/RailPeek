@@ -148,9 +148,11 @@ export function getLifecycleCachePolicy({
   const isFirstChartDone = Boolean(chartOneDate || isPrepared);
   if (isFirstChartDone) {
     if (dataType === 'composition') {
-      // Coach composition (rake order) is fixed once Chart 1 is prepared
-      const minutesToFinal = diffMinutes !== null ? diffMinutes - 30 : 180;
-      const ttlSec = Math.max(300, Math.min(minutesToFinal * 60, 1800)); // 5 to 30 mins
+      // Coach composition (rake order) is fixed once Chart 1 is prepared until Final Chart
+      const minutesToFinal = diffMinutes !== null ? diffMinutes - 30 : 30;
+      const ttlSec = diffMinutes !== null
+        ? Math.max(1800, Math.min(minutesToFinal * 60, 14400)) // Cache until final chart (up to 4 hours)
+        : Math.max(300, Math.min(minutesToFinal * 60, 1800));
       return {
         ttlSeconds: ttlSec,
         staleSeconds: Math.floor(ttlSec / 2),
@@ -160,9 +162,14 @@ export function getLifecycleCachePolicy({
     }
 
     // Vacant berths & coach layout: Active current booking window
+    // Cached for 10-15 minutes or remaining time to final chart to conserve proxy credits while serving high concurrency
+    const minutesToFinal = diffMinutes !== null ? diffMinutes - 30 : 2;
+    const ttlSec = diffMinutes !== null
+      ? Math.max(300, Math.min(minutesToFinal * 60, 900)) // 5 to 15 mins
+      : 120;
     return {
-      ttlSeconds: 120, // 2 minutes active window
-      staleSeconds: 60,
+      ttlSeconds: ttlSec,
+      staleSeconds: Math.floor(ttlSec / 2),
       stage: 'CHART_PREPARED',
       description: 'First chart prepared. Current booking active. Cached for high concurrency.',
     };
@@ -170,11 +177,13 @@ export function getLifecycleCachePolicy({
 
   // Stage 4: Advance Window / Chart Not Prepared (> 4 hours before dep)
   // First chart is prepared ~4 hours (240 mins) before departure
-  const minutesUntilFirstChart = diffMinutes !== null ? diffMinutes - 240 : 180;
+  const minutesUntilFirstChart = diffMinutes !== null ? diffMinutes - 240 : 30;
 
   if (minutesUntilFirstChart > 15) {
     // First chart cannot be prepared for at least another `minutesUntilFirstChart` minutes
-    const ttlSec = Math.max(300, Math.min(minutesUntilFirstChart * 60, 1800)); // 5m to 30m
+    const ttlSec = diffMinutes !== null
+      ? Math.max(600, Math.min(minutesUntilFirstChart * 60, 7200)) // Up to 2 hours when departure is far
+      : Math.max(300, Math.min(minutesUntilFirstChart * 60, 1800));
     return {
       ttlSeconds: ttlSec,
       staleSeconds: Math.floor(ttlSec / 2),
