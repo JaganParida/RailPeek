@@ -78,8 +78,7 @@ async function executeIrctcRequest(endpoint, body, signal) {
     }
   }
 
-  const bridgeUrl =
-    process.env.IRCTC_BRIDGE_URL || 'https://gerald-installed-performed-guitars.trycloudflare.com';
+  const bridgeUrl = process.env.IRCTC_BRIDGE_URL || '';
   const bridgeToken = process.env.IRCTC_BRIDGE_TOKEN || 'railpeek-live-bridge';
 
   // 2. Try Bridge if configured and not in cooldown

@@ -26,9 +26,7 @@
 
 const IRCTC_DIRECT_BASE = 'https://www.irctc.co.in/online-charts/api';
 const SAME_ORIGIN_BASE = '/api/v1/coaches/irctc';
-const LIVE_TUNNEL_BASE =
-  import.meta.env.VITE_IRCTC_BRIDGE_URL ||
-  'https://gerald-installed-performed-guitars.trycloudflare.com/api/irctc';
+const LIVE_TUNNEL_BASE = import.meta.env.VITE_IRCTC_BRIDGE_URL || '';
 const CLOUDFLARE_EDGE_BASE = import.meta.env.VITE_CLOUDFLARE_WORKER_URL
   ? `${import.meta.env.VITE_CLOUDFLARE_WORKER_URL.replace(/\/$/, '')}/api/irctc`
   : '';
