@@ -36,11 +36,15 @@ app.get('/health', (req, res) => {
 
 async function forwardToIrctc(endpoint, body, res) {
   try {
-    const irctcUrl = `https://www.irctc.co.in/online-charts/api/${endpoint}`;
+    const scrapeOpsKey = process.env.SCRAPEOPS_API_KEY;
+    let irctcUrl = `https://www.irctc.co.in/online-charts/api/${endpoint}`;
+    if (scrapeOpsKey) {
+      irctcUrl = `https://proxy.scrapeops.io/v1/?api_key=${scrapeOpsKey}&url=${encodeURIComponent(irctcUrl)}&country=in&residential=true&keep_headers=true`;
+    }
     console.log(`[Bridge] Forwarding request to IRCTC -> ${endpoint} (Train: ${body?.trainNo})`);
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8000);
+    const timeout = setTimeout(() => controller.abort(), 12000);
 
     const response = await fetch(irctcUrl, {
       method: 'POST',

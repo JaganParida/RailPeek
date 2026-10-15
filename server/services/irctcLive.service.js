@@ -43,11 +43,33 @@ const IRCTC_HEADERS = {
 let bridgeDownUntil = 0;
 
 async function executeIrctcRequest(endpoint, body, signal) {
+  // 1. Try ScrapeOps Indian Residential Proxy if configured
+  const scrapeOpsKey = process.env.SCRAPEOPS_API_KEY;
+  if (scrapeOpsKey) {
+    try {
+      const targetUrl = `https://www.irctc.co.in/online-charts/api/${endpoint}`;
+      const proxyUrl = `https://proxy.scrapeops.io/v1/?api_key=${scrapeOpsKey}&url=${encodeURIComponent(targetUrl)}&country=in&residential=true&keep_headers=true`;
+      const res = await fetch(proxyUrl, {
+        method: 'POST',
+        headers: IRCTC_HEADERS,
+        body: JSON.stringify(body),
+        signal,
+      });
+
+      if (res.ok) {
+        return res;
+      }
+      console.warn(`[IRCTC Live] ScrapeOps returned HTTP ${res.status} for ${endpoint}. Falling back to bridge/direct.`);
+    } catch (scrapeErr) {
+      console.warn(`[IRCTC Live] ScrapeOps proxy error: ${scrapeErr.message}. Falling back to bridge/direct.`);
+    }
+  }
+
   const bridgeUrl =
     process.env.IRCTC_BRIDGE_URL || 'https://gerald-installed-performed-guitars.trycloudflare.com';
   const bridgeToken = process.env.IRCTC_BRIDGE_TOKEN || 'railpeek-live-bridge';
 
-  // 1. Try Bridge first if configured and not in cooldown
+  // 2. Try Bridge if configured and not in cooldown
   if (bridgeUrl && Date.now() > bridgeDownUntil) {
     try {
       const bridgeTarget = `${bridgeUrl.replace(/\/$/, '')}/api/irctc/${endpoint}`;
