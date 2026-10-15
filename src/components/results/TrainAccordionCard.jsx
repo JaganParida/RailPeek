@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { ChevronDown, ChevronUp, ShieldCheck, Train, CheckCircle2, Clock } from 'lucide-react';
+import { ChevronDown, ChevronUp, ShieldCheck, Train, CheckCircle2, Clock, Compass } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { VacantBerthsGrid } from '@/components/results/VacantBerthsGrid';
@@ -442,80 +442,94 @@ export function TrainAccordionCard({
             </div>
           </div>
 
-          {/* View Berths Toggle Button */}
-          {hasVacancies ? (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              rightIcon={isOpen ? ChevronUp : ChevronDown}
-              onClick={(e) => {
-                e.stopPropagation();
-                onToggle();
-              }}
-              className={`whitespace-nowrap font-bold text-xs h-9 px-3.5 rounded-lg shrink-0 ${
-                isOpen
-                  ? 'bg-[#1e3a8a] text-white border-[#1e3a8a] hover:bg-[#172554]'
-                  : 'bg-blue-50 text-[#1e3a8a] border-blue-300 hover:bg-blue-100 hover:border-blue-400'
-              }`}
+          {/* Action Buttons: Coach Layout + View Berths Toggle */}
+          <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto flex-wrap">
+            <a
+              href={`/coach?train=${encodeURIComponent(trainNumber)}&from=${encodeURIComponent(fromStation || trainOrigin)}&to=${encodeURIComponent(toStation || trainDest)}&date=${encodeURIComponent(journeyDate || '')}&class=${encodeURIComponent(currentClass)}`}
+              onClick={(e) => e.stopPropagation()}
+              className="whitespace-nowrap font-bold text-xs h-9 px-3 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 hover:text-[#1e3a8a] hover:border-blue-300 inline-flex items-center gap-1.5 transition-all shadow-2xs cursor-pointer"
+              title={`View Interactive Coach Bogie & Seat Layout for Train ${trainNumber}`}
             >
-              {isOpen ? 'Hide Berths' : `View Berths (${totalVacantCount})`}
-            </Button>
-          ) : isTTEOnly && totalVacantCount > 0 ? (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              rightIcon={isOpen ? ChevronUp : ChevronDown}
-              onClick={(e) => {
-                e.stopPropagation();
-                onToggle();
-              }}
-              className={`whitespace-nowrap font-bold text-xs h-9 px-3.5 rounded-lg shrink-0 ${
-                isOpen
-                  ? 'bg-amber-800 text-white border-amber-800 hover:bg-amber-900'
-                  : 'bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100 hover:border-amber-400'
-              }`}
-            >
-              {isOpen ? 'Hide TTE Berths' : `TTE Berths (${totalVacantCount})`}
-            </Button>
-          ) : isDeparted ? (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              rightIcon={isOpen ? ChevronUp : ChevronDown}
-              onClick={(e) => {
-                e.stopPropagation();
-                onToggle();
-              }}
-              className={`whitespace-nowrap font-bold text-xs h-9 px-3.5 rounded-lg shrink-0 ${
-                isOpen
-                  ? 'bg-slate-700 text-white border-slate-700 hover:bg-slate-800'
-                  : 'bg-slate-100 text-slate-700 border-slate-300 hover:bg-slate-200'
-              }`}
-            >
-              {isOpen ? 'Hide Status' : 'View Status'}
-            </Button>
-          ) : (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              rightIcon={isOpen ? ChevronUp : ChevronDown}
-              onClick={(e) => {
-                e.stopPropagation();
-                onToggle();
-              }}
-              className={`whitespace-nowrap font-bold text-xs h-9 px-3.5 rounded-lg shrink-0 ${
-                isOpen
-                  ? 'bg-[#1e3a8a] text-white border-[#1e3a8a] hover:bg-[#172554]'
-                  : 'bg-slate-50 text-slate-700 border-slate-300 hover:bg-slate-100'
-              }`}
-            >
-              {isOpen ? 'Hide Details' : 'View Details'}
-            </Button>
-          )}
+              <Compass className="w-3.5 h-3.5 text-[#1e3a8a]" />
+              <span className="hidden sm:inline">Coach Layout</span>
+              <span className="sm:hidden">Coach</span>
+            </a>
+
+            {/* View Berths Toggle Button */}
+            {hasVacancies ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                rightIcon={isOpen ? ChevronUp : ChevronDown}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggle();
+                }}
+                className={`whitespace-nowrap font-bold text-xs h-9 px-3.5 rounded-lg shrink-0 ${
+                  isOpen
+                    ? 'bg-[#1e3a8a] text-white border-[#1e3a8a] hover:bg-[#172554]'
+                    : 'bg-blue-50 text-[#1e3a8a] border-blue-300 hover:bg-blue-100 hover:border-blue-400'
+                }`}
+              >
+                {isOpen ? 'Hide Berths' : `View Berths (${totalVacantCount})`}
+              </Button>
+            ) : isTTEOnly && totalVacantCount > 0 ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                rightIcon={isOpen ? ChevronUp : ChevronDown}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggle();
+                }}
+                className={`whitespace-nowrap font-bold text-xs h-9 px-3.5 rounded-lg shrink-0 ${
+                  isOpen
+                    ? 'bg-amber-800 text-white border-amber-800 hover:bg-amber-900'
+                    : 'bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100 hover:border-amber-400'
+                }`}
+              >
+                {isOpen ? 'Hide TTE Berths' : `TTE Berths (${totalVacantCount})`}
+              </Button>
+            ) : isDeparted ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                rightIcon={isOpen ? ChevronUp : ChevronDown}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggle();
+                }}
+                className={`whitespace-nowrap font-bold text-xs h-9 px-3.5 rounded-lg shrink-0 ${
+                  isOpen
+                    ? 'bg-slate-700 text-white border-slate-700 hover:bg-slate-800'
+                    : 'bg-slate-100 text-slate-700 border-slate-300 hover:bg-slate-200'
+                }`}
+              >
+                {isOpen ? 'Hide Status' : 'View Status'}
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                rightIcon={isOpen ? ChevronUp : ChevronDown}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggle();
+                }}
+                className={`whitespace-nowrap font-bold text-xs h-9 px-3.5 rounded-lg shrink-0 ${
+                  isOpen
+                    ? 'bg-[#1e3a8a] text-white border-[#1e3a8a] hover:bg-[#172554]'
+                    : 'bg-slate-50 text-slate-700 border-slate-300 hover:bg-slate-100'
+                }`}
+              >
+                {isOpen ? 'Hide Details' : 'View Details'}
+              </Button>
+            )}
+          </div>
         </div>
 
         {/* Tier 2: Dedicated Sleek Chart & Booking Status Bar */}
