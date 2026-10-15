@@ -41,19 +41,32 @@ const IRCTC_HEADERS = {
 };
 
 let bridgeDownUntil = 0;
+let scrapeOpsQueue = Promise.resolve();
+
+async function enqueueScrapeOps(fn) {
+  const next = scrapeOpsQueue.then(async () => {
+    // 250ms spacing guarantees concurrency = 1 (ScrapeOps free plan compliance)
+    await new Promise((r) => setTimeout(r, 250));
+    return fn();
+  });
+  scrapeOpsQueue = next.catch(() => {});
+  return next;
+}
 
 async function executeIrctcRequest(endpoint, body, signal) {
-  // 1. Try ScrapeOps Indian Residential Proxy if configured
+  // 1. Try ScrapeOps Indian Residential Proxy if configured (concurrency = 1)
   const scrapeOpsKey = process.env.SCRAPEOPS_API_KEY;
   if (scrapeOpsKey) {
     try {
-      const targetUrl = `https://www.irctc.co.in/online-charts/api/${endpoint}`;
-      const proxyUrl = `https://proxy.scrapeops.io/v1/?api_key=${scrapeOpsKey}&url=${encodeURIComponent(targetUrl)}&country=in&residential=true&keep_headers=true`;
-      const res = await fetch(proxyUrl, {
-        method: 'POST',
-        headers: IRCTC_HEADERS,
-        body: JSON.stringify(body),
-        signal,
+      const res = await enqueueScrapeOps(async () => {
+        const targetUrl = `https://www.irctc.co.in/online-charts/api/${endpoint}`;
+        const proxyUrl = `https://proxy.scrapeops.io/v1/?api_key=${scrapeOpsKey}&url=${encodeURIComponent(targetUrl)}&country=in&residential=true&keep_headers=true`;
+        return await fetch(proxyUrl, {
+          method: 'POST',
+          headers: IRCTC_HEADERS,
+          body: JSON.stringify(body),
+          signal,
+        });
       });
 
       if (res.ok) {

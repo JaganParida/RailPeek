@@ -34,6 +34,17 @@ app.get('/health', (req, res) => {
   });
 });
 
+let scrapeOpsBridgeQueue = Promise.resolve();
+
+async function enqueueScrapeOpsBridge(fn) {
+  const next = scrapeOpsBridgeQueue.then(async () => {
+    await new Promise((r) => setTimeout(r, 250));
+    return fn();
+  });
+  scrapeOpsBridgeQueue = next.catch(() => {});
+  return next;
+}
+
 async function forwardToIrctc(endpoint, body, res) {
   try {
     const scrapeOpsKey = process.env.SCRAPEOPS_API_KEY;
@@ -43,16 +54,25 @@ async function forwardToIrctc(endpoint, body, res) {
     }
     console.log(`[Bridge] Forwarding request to IRCTC -> ${endpoint} (Train: ${body?.trainNo})`);
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 12000);
+    const doFetch = async () => {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 12000);
+      try {
+        const r = await fetch(irctcUrl, {
+          method: 'POST',
+          headers: IRCTC_HEADERS,
+          body: JSON.stringify(body),
+          signal: controller.signal,
+        });
+        clearTimeout(timeout);
+        return r;
+      } catch (e) {
+        clearTimeout(timeout);
+        throw e;
+      }
+    };
 
-    const response = await fetch(irctcUrl, {
-      method: 'POST',
-      headers: IRCTC_HEADERS,
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
-    clearTimeout(timeout);
+    const response = scrapeOpsKey ? await enqueueScrapeOpsBridge(doFetch) : await doFetch();
 
     const data = await response.json().catch(async () => {
       const txt = await response.text().catch(() => '');
